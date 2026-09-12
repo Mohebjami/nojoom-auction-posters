@@ -157,6 +157,7 @@ class StudioShell extends StatelessWidget {
         ),
       ),
       child: SafeArea(
+        bottom: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final desktop =
@@ -221,65 +222,69 @@ class StudioShell extends StatelessWidget {
                           if (section == 'Preview')
                             _nav('Preview', Icons.image_outlined, null),
                           const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(18),
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Color(0xff53564f), Color(0xff746054)],
-                              ),
-                              border: Border.all(color: Colors.white12),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(
-                                  Icons.auto_awesome,
-                                  size: 20,
-                                  color: Color(0xffeaa184),
-                                ),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'A better first\nimpression.',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 15,
-                                    height: 1.2,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Your vehicles.\nBeautifully presented.',
-                                  style: TextStyle(
-                                    color: Colors.white60,
-                                    fontSize: 11,
-                                    height: 1.5,
-                                  ),
-                                ),
-                                if (onNew != null) ...[
-                                  const SizedBox(height: 12),
-                                  FilledButton(
-                                    onPressed: busy ? null : onNew,
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xffeeeae0),
-                                      foregroundColor: StudioColors.ink,
-                                      minimumSize: const Size(0, 34),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Create poster',
-                                      style: TextStyle(fontSize: 10),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
+                         
+                         
+                          // Container(
+                          //   padding: const EdgeInsets.all(14),
+                          //   decoration: BoxDecoration(
+                          //     borderRadius: BorderRadius.circular(18),
+                          //     gradient: const LinearGradient(
+                          //       begin: Alignment.topLeft,
+                          //       end: Alignment.bottomRight,
+                          //       colors: [Color(0xff53564f), Color(0xff746054)],
+                          //     ),
+                          //     border: Border.all(color: Colors.white12),
+                          //   ),
+                          //   child: Column(
+                          //     crossAxisAlignment: CrossAxisAlignment.start,
+                          //     children: [
+                          //       const Icon(
+                          //         Icons.auto_awesome,
+                          //         size: 20,
+                          //         color: Color(0xffeaa184),
+                          //       ),
+                          //       const SizedBox(height: 12),
+                          //       const Text(
+                          //         'A better first\nimpression.',
+                          //         style: TextStyle(
+                          //           color: Colors.white,
+                          //           fontSize: 15,
+                          //           height: 1.2,
+                          //           fontWeight: FontWeight.w500,
+                          //         ),
+                          //       ),
+                          //       const SizedBox(height: 8),
+                          //       const Text(
+                          //         'Your vehicles.\nBeautifully presented.',
+                          //         style: TextStyle(
+                          //           color: Colors.white60,
+                          //           fontSize: 11,
+                          //           height: 1.5,
+                          //         ),
+                          //       ),
+                          //       if (onNew != null) ...[
+                          //         const SizedBox(height: 12),
+                          //         FilledButton(
+                          //           onPressed: busy ? null : onNew,
+                          //           style: FilledButton.styleFrom(
+                          //             backgroundColor: const Color(0xffeeeae0),
+                          //             foregroundColor: StudioColors.ink,
+                          //             minimumSize: const Size(0, 34),
+                          //             padding: const EdgeInsets.symmetric(
+                          //               horizontal: 12,
+                          //             ),
+                          //           ),
+                          //           child: const Text(
+                          //             'Create poster',
+                          //             style: TextStyle(fontSize: 10),
+                          //           ),
+                          //         ),
+                          //       ],
+                          //     ],
+                          //   ),
+                          // ),
+                          
+                          
                           const Padding(
                             padding: EdgeInsets.fromLTRB(10, 18, 0, 2),
                             child: Row(
