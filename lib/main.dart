@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -18,6 +17,7 @@ import 'poster_history.dart';
 import 'history_screen.dart';
 import 'gallery_export.dart';
 import 'studio_ui.dart';
+import 'custom_template.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +63,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _busy = false;
   int? _pendingSlot;
   int? _draftId;
+  CustomPosterTemplate? _customTemplate;
   bool _dirty = false;
   PosterHistory get _history => widget.history ?? PosterHistory.instance;
 
@@ -271,7 +272,13 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final id = await _history.save(_vehicle, _photos, id: _draftId);
+      final id = await _history.save(
+        _vehicle,
+        _photos,
+        id: _draftId,
+        templateSvg: _customTemplate?.source,
+        templateName: _customTemplate?.name,
+      );
       if (!mounted) return;
       setState(() {
         _draftId = id;
@@ -331,7 +338,20 @@ class _EditorScreenState extends State<EditorScreen> {
     );
     if (!mounted) return;
     if (draft != null) {
+      CustomPosterTemplate? template;
+      try {
+        if (draft.templateSvg != null) {
+          template = CustomPosterTemplate.parse(
+            draft.templateName ?? 'Imported template',
+            draft.templateSvg!,
+          );
+        }
+      } catch (error) {
+        _showError('Could not restore the saved template: $error');
+        return;
+      }
       setState(() {
+        _customTemplate = template;
         for (final entry in draft.vehicle.toJson().entries) {
           _controllers[entry.key]!.text = entry.value;
         }
@@ -367,8 +387,16 @@ class _EditorScreenState extends State<EditorScreen> {
 
       final vehicle = _vehicle;
 
-      final result = await template.build(vehicle, _photos);
-      final id = await _history.save(vehicle, _photos, id: _draftId);
+      final result = _customTemplate == null
+          ? await template.build(vehicle, _photos)
+          : await _customTemplate!.build(vehicle, _photos, template.logo);
+      final id = await _history.save(
+        vehicle,
+        _photos,
+        id: _draftId,
+        templateSvg: _customTemplate?.source,
+        templateName: _customTemplate?.name,
+      );
 
       if (!mounted) return;
       setState(() {
@@ -386,6 +414,8 @@ class _EditorScreenState extends State<EditorScreen> {
             photos: result.photos,
             logo: result.logo,
             savedToHistory: true,
+            previewImage: result.previewImage,
+            canvasSize: result.canvasSize,
           ),
         ),
       );
@@ -399,6 +429,127 @@ class _EditorScreenState extends State<EditorScreen> {
       }
     }
   }
+
+  Future<void> _selectTemplate(String choice) async {
+    if (_busy) return;
+    if (choice == 'original') {
+      setState(() {
+        _customTemplate = null;
+        _dirty = true;
+      });
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      CustomPosterTemplate? template;
+      if (choice == 'sample') {
+        template = await CustomPosterTemplate.sample();
+      } else {
+        final file = await openFile(
+          acceptedTypeGroups: const [
+            XTypeGroup(
+              label: 'SVG template',
+              extensions: ['svg'],
+              mimeTypes: ['image/svg+xml'],
+              uniformTypeIdentifiers: ['public.svg-image'],
+            ),
+          ],
+        );
+        if (file == null) return;
+        if (await file.length() > 10 * 1024 * 1024) {
+          throw const FormatException(
+            'Choose an SVG template smaller than 10 MB.',
+          );
+        }
+        template = CustomPosterTemplate.parse(
+          file.name,
+          await file.readAsString(),
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _customTemplate = template;
+        _dirty = true;
+      });
+    } catch (error) {
+      _showError('Could not load template: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _templateGuide() => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Bring your own template'),
+      content: const SingleChildScrollView(
+        child: SelectableText(
+          'Upload a static SVG with a viewBox starting at 0 0.\n\n'
+          'Put these placeholders inside text elements:\n{{title}}, {{model}}, {{price}}, {{color}}, {{vin}}, {{number}}\n\n'
+          'Use image href="{{photo0}}" for the main photo and {{photo1}}, {{photo2}}, {{photo3}} for the other photos. {{logo}} inserts the studio logo.\n\n'
+          'Position and size each element in your design. Add data-max-width="600" to a text element to shrink long values to fit. Embed any other images.\n\n'
+          'The Clean showroom sample is ready to use. Your entered data stays in place when you switch templates.',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Got it'),
+        ),
+      ],
+    ),
+  );
+
+  Widget _templateSelector() => StudioCard(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    child: Row(
+      children: [
+        const Icon(
+          Icons.dashboard_customize_outlined,
+          color: StudioColors.accent,
+          size: 22,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _customTemplate?.name ?? 'Original artwork',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Same vehicle. A new look.',
+                style: TextStyle(fontSize: 11, color: StudioColors.muted),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Template guide',
+          onPressed: _templateGuide,
+          icon: const Icon(Icons.info_outline, size: 18),
+        ),
+        PopupMenuButton<String>(
+          tooltip: 'Change template',
+          enabled: !_busy,
+          onSelected: _selectTemplate,
+          icon: const Icon(Icons.swap_horiz_rounded),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'original', child: Text('Original artwork')),
+            PopupMenuItem(value: 'sample', child: Text('Clean showroom')),
+            PopupMenuItem(value: 'import', child: Text('Import SVG template…')),
+          ],
+        ),
+      ],
+    ),
+  );
 
   Widget _field(
     String key,
@@ -793,6 +944,8 @@ class _EditorScreenState extends State<EditorScreen> {
                 ],
               ),
               const SizedBox(height: 20),
+              _templateSelector(),
+              const SizedBox(height: 16),
               if (wide)
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -882,6 +1035,8 @@ class PreviewScreen extends StatefulWidget {
   final List<Uint8List?> photos;
   final Uint8List logo;
   final bool savedToHistory;
+  final Uint8List? previewImage;
+  final Size canvasSize;
 
   const PreviewScreen({
     super.key,
@@ -891,6 +1046,8 @@ class PreviewScreen extends StatefulWidget {
     required this.photos,
     required this.logo,
     this.savedToHistory = false,
+    this.previewImage,
+    this.canvasSize = const Size(1621, 1987),
   });
 
   @override
@@ -898,8 +1055,8 @@ class PreviewScreen extends StatefulWidget {
 }
 
 class _PreviewScreenState extends State<PreviewScreen> {
-  static const double posterWidth = 1621;
-  static const double posterHeight = 1987;
+  double get posterWidth => widget.canvasSize.width.ceilToDouble();
+  double get posterHeight => widget.canvasSize.height.ceilToDouble();
 
   final GlobalKey _posterKey = GlobalKey();
 
@@ -912,7 +1069,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
     _imagesReady ??= Future.wait([
       for (final bytes in [
         ...widget.photos.whereType<Uint8List>(),
-        widget.logo,
+        if (widget.logo.isNotEmpty) widget.logo,
+        if (widget.previewImage != null) widget.previewImage!,
       ])
         precacheImage(MemoryImage(bytes), context),
     ]);
@@ -963,7 +1121,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
       throw Exception('Could not capture poster.');
     }
 
-    // The RepaintBoundary itself is 1621 × 1987.
+    // Capture at the active template’s native pixel dimensions.
     final ui.Image image = await renderObject.toImage(pixelRatio: 1);
 
     try {
@@ -1009,7 +1167,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
     });
 
     try {
-      final bytes = Uint8List.fromList(utf8.encode(widget.exportSvg));
+      final bytes = await compute(compressPosterSvg, widget.exportSvg);
+      if (!mounted) return;
 
       await _shareBytes(bytes, 'svg', 'image/svg+xml');
     } catch (e) {
@@ -1123,6 +1282,20 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   Widget _buildPoster() {
+    if (widget.previewImage != null) {
+      return RepaintBoundary(
+        key: _posterKey,
+        child: SizedBox(
+          width: posterWidth,
+          height: posterHeight,
+          child: Image.memory(
+            widget.previewImage!,
+            fit: BoxFit.fill,
+            filterQuality: FilterQuality.high,
+          ),
+        ),
+      );
+    }
     return RepaintBoundary(
       key: _posterKey,
       child: SizedBox(
@@ -1246,9 +1419,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
               color: StudioColors.muted,
             ),
             const SizedBox(width: 8),
-            const Text(
-              '1621 × 1987 px',
-              style: TextStyle(fontSize: 11, color: StudioColors.muted),
+            Text(
+              '${posterWidth.toInt()} × ${posterHeight.toInt()} px',
+              style: const TextStyle(fontSize: 11, color: StudioColors.muted),
             ),
             const Spacer(),
             if (widget.savedToHistory)

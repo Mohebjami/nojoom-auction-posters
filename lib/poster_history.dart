@@ -12,6 +12,8 @@ class PosterDraft {
   final VehicleDetails vehicle;
   // Keep the original normalized images, before the poster's frame crops.
   final List<Uint8List?> photos;
+  final String? templateSvg;
+  final String? templateName;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -21,6 +23,8 @@ class PosterDraft {
     required this.photos,
     required this.createdAt,
     required this.updatedAt,
+    this.templateSvg,
+    this.templateName,
   });
 }
 
@@ -95,6 +99,8 @@ class PosterHistory {
               (value) => value == null ? null : base64Decode(value as String),
             )
             .toList(),
+        templateSvg: entry['templateSvg'] as String?,
+        templateName: entry['templateName'] as String?,
         createdAt: DateTime.parse(entry['createdAt'] as String),
         updatedAt: DateTime.parse(entry['updatedAt'] as String),
       );
@@ -105,6 +111,8 @@ class PosterHistory {
     VehicleDetails vehicle,
     List<Uint8List?> photos, {
     int? id,
+    String? templateSvg,
+    String? templateName,
   }) async {
     if (photos.length != 4) {
       throw ArgumentError('A poster must contain exactly four photo slots.');
@@ -122,7 +130,9 @@ class PosterHistory {
         );
       }
       final entry = <String, Object?>{
-        'version': 1,
+        'version': 2,
+        'templateSvg': templateSvg,
+        'templateName': templateName,
         'vehicle': vehicle.toJson(),
         'createdAt': previous?['createdAt'] ?? now,
         'updatedAt': now,

@@ -44,6 +44,7 @@ dependencies:
   file_selector: ^1.1.0
   sembast: ^3.8.9+1
   sembast_web: ^2.4.5+1
+  xml: ^7.0.1
 
 dev_dependencies:
   flutter_test:
@@ -71,6 +72,7 @@ flutter:
     - assets/original_text.json
     - assets/glyphs.json
     - assets/preview.html
+    - assets/templates/clean.svg
 
   # To add assets to your application, add an assets section, like this:
   # assets:

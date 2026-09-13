@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vehicle_poster/main.dart';
 import 'package:vehicle_poster/poster.dart';
+import 'package:vehicle_poster/poster_export.dart';
+import 'package:vehicle_poster/custom_template.dart';
 import 'package:vehicle_poster/studio_ui.dart';
 
 List<Uint8List> _referencePhotos(String original) {
@@ -110,6 +112,33 @@ void main() {
       _expectLocalReferencesResolve(poster.exportSvg);
     },
   );
+
+  test('Real SVG compression and sample template reuse', () async {
+    final poster = await template.build(details, photos);
+    final compressed = compressPosterSvg(poster.exportSvg);
+    final originalBytes = utf8.encode(poster.exportSvg).length;
+    expect(compressed.length, lessThan(originalBytes * .65));
+    _expectLocalReferencesResolve(utf8.decode(compressed));
+    expect(_vehicleImages(utf8.decode(compressed)), hasLength(4));
+    final sample = await CustomPosterTemplate.sample();
+    final alternate = await sample.build(details, photos, poster.logo);
+    expect(alternate.exportSvg, isNot(contains('{{')));
+    expect(alternate.previewImage, isNotEmpty);
+    Directory('build/verification').createSync(recursive: true);
+    File(
+      'build/verification/compressed-poster.svg',
+    ).writeAsBytesSync(compressed);
+    File(
+      'build/verification/clean-showroom.png',
+    ).writeAsBytesSync(alternate.previewImage!);
+    File('build/verification/svg-size.json').writeAsStringSync(
+      jsonEncode({
+        'originalBytes': originalBytes,
+        'compressedBytes': compressed.length,
+        'reductionPercent': (1 - compressed.length / originalBytes) * 100,
+      }),
+    );
+  });
 
   test(
     'Preview design omits photos while preserving logo and decoration',

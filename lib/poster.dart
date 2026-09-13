@@ -71,12 +71,16 @@ class GeneratedPoster {
 
   final List<Uint8List?> photos;
   final Uint8List logo;
+  final Uint8List? previewImage;
+  final Size canvasSize;
 
   const GeneratedPoster({
     required this.designSvg,
     required this.exportSvg,
     required this.photos,
     required this.logo,
+    this.previewImage,
+    this.canvasSize = const Size(1621, 1987),
   });
 }
 

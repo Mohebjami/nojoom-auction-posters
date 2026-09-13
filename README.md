@@ -73,3 +73,41 @@ Figma import and physical-device gallery or share sheets require manual verifica
 - [`test/widget_test.dart`](test/widget_test.dart): regression tests and visual QA capture.
 
 The original supplied artwork is retained under `reference/Group 11.svg`. The Inter license is included in [`INTER-LICENSE.txt`](INTER-LICENSE.txt).
+
+## SVG compression and reusable templates
+
+**Share SVG** now removes duplicate embedded image data and losslessly optimizes
+PNGs. Photo pixels, transparency, vector artwork, and dimensions are preserved.
+An optimization is kept only if it makes the output smaller. Native compression
+runs in a background isolate. The result is a normal `.svg`; savings depend on
+its images.
+
+In the editor, use **Change template** to select **Original artwork**, **Clean
+showroom**, or **Import SVG template…**. Existing vehicle fields and all four
+photos stay in place. Save or generate to store the selected template with the
+draft. History restores the saved design; older drafts use Original artwork.
+
+Start your design from [`assets/templates/clean.svg`](assets/templates/clean.svg).
+Arbitrary SVG designs must first be prepared with placeholders; the app cannot
+infer which outlined text or images should be replaced.
+
+- Place `{{title}}`, `{{model}}`, `{{price}}`, `{{color}}`, `{{vin}}`, and
+  `{{number}}` inside `<text>` or `<tspan>` elements.
+- Use `<image href="{{photo0}}" .../>` for the main photo, and `{{photo1}}`,
+  `{{photo2}}`, `{{photo3}}` for supporting photos. `{{logo}}` uses the original logo.
+- Set the image positions, dimensions, and clip paths in your design. Use
+  `preserveAspectRatio="xMidYMid slice"` for centered cover crops.
+- Add `data-max-width="600"` to a simple `<text font-size="48">` element to shrink
+  long values to fit. Use numeric font sizes; complex tspan styling needs space
+  in the design. Missing fields become empty text and missing photos are omitted.
+- Use `viewBox="0 0 width height"`, at most 4096 pixels per side and 8 million
+  pixels total, in an SVG file up to 10 MB. Imported designs export at their own
+  dimensions; the original remains 1621 × 1987.
+- Embed any other images as PNG/JPEG data URIs. Static paths, shapes, text,
+  gradients, clips, and masks are supported. External links, scripts,
+  stylesheets, and unsupported elements are rejected with an explanation.
+
+Preview, PNG, and JPG render from the populated custom design. SVG sharing keeps
+its vector elements. Imported text uses fonts available on the device; outline
+fixed decorative text for consistent appearance across devices. The in-app
+**Template guide** describes the same placeholder format.
