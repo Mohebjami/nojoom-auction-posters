@@ -18,6 +18,7 @@ import 'history_screen.dart';
 import 'gallery_export.dart';
 import 'studio_ui.dart';
 import 'custom_template.dart';
+import 'vehicle_import.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -371,6 +372,77 @@ class _EditorScreenState extends State<EditorScreen> {
         }
       } catch (error) {
         _showError(error);
+      }
+    }
+  }
+
+  Future<void> _importSpreadsheet() async {
+    if (_busy) return;
+    if (!await _confirmDiscard() || !mounted) return;
+
+    setState(() => _busy = true);
+
+    try {
+      final file = await openFile(
+        acceptedTypeGroups: const [
+          XTypeGroup(
+            label: 'Spreadsheet',
+            extensions: ['csv', 'xlsx'],
+            mimeTypes: [
+              'text/csv',
+              'application/csv',
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ],
+          ),
+        ],
+      );
+
+      if (file == null) return;
+
+      final bytes = await file.readAsBytes();
+      final vehicles = await VehicleListImporter.fromBytes(file.name, bytes);
+
+      if (vehicles.isEmpty) {
+        throw const FormatException(
+          'No rows could be read from the spreadsheet. Check the headers and data.',
+        );
+      }
+
+      var savedCount = 0;
+      for (final vehicle in vehicles) {
+        final savedId = await _history.save(
+          vehicle,
+          List<Uint8List?>.filled(4, null),
+        );
+        if (savedId > 0) {
+          savedCount += 1;
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _draftId = null;
+        _dirty = false;
+        _photos.fillRange(0, 4, null);
+        for (final controller in _controllers.values) {
+          controller.clear();
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Imported $savedCount draft${savedCount == 1 ? '' : 's'} from the spreadsheet.',
+          ),
+        ),
+      );
+
+      await _openHistory();
+    } catch (error) {
+      _showError('Could not import spreadsheet: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
       }
     }
   }
@@ -854,6 +926,25 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
             const Spacer(),
           ],
+          if (constraints.maxWidth >= 820)
+            TextButton.icon(
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              onPressed: _busy ? null : _importSpreadsheet,
+              icon: const Icon(Icons.upload_file_outlined, size: 16),
+              label: const Text(
+                'Import spreadsheet',
+                style: TextStyle(fontSize: 12),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: 'Import spreadsheet',
+              onPressed: _busy ? null : _importSpreadsheet,
+              icon: const Icon(Icons.upload_file_outlined, size: 18),
+            ),
+          const SizedBox(width: 10),
           TextButton.icon(
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8),

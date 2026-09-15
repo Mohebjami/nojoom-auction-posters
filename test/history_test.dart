@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -10,6 +11,7 @@ import 'package:vehicle_poster/main.dart';
 import 'package:vehicle_poster/poster.dart';
 import 'package:vehicle_poster/poster_export.dart';
 import 'package:vehicle_poster/poster_history.dart';
+import 'package:vehicle_poster/vehicle_import.dart';
 
 Future<void> settleStorage(WidgetTester tester) async {
   // Sembast's streams run on the real event loop, outside the fake frame clock.
@@ -98,6 +100,31 @@ void main() {
     await expectLater(history.list(), throwsA(isA<FileSystemException>()));
     expect(await history.list(), isEmpty);
   });
+
+  test(
+    'Spreadsheet rows import as saved drafts with the expected fields',
+    () async {
+      const csv = '''
+Number,Vehicle,Year,Color,Price (USD),Stock / ID
+2,2010 TOYOTA COROLLA,2010,SILVER,6000,JTDKN3DU2A0090987
+5,2018 HONDA CIVIC,2018,BLACK,18500,5YFGA4A36J
+''';
+
+      final rows = await VehicleListImporter.fromBytes(
+        'sample.csv',
+        utf8.encode(csv),
+      );
+
+      expect(rows, hasLength(2));
+      expect(rows[0].number, '2');
+      expect(rows[0].title, '2010 TOYOTA COROLLA');
+      expect(rows[0].model, '2010');
+      expect(rows[0].color, 'SILVER');
+      expect(rows[0].price, '6000');
+      expect(rows[0].vin, 'JTDKN3DU2A0090987');
+      expect(rows[1].title, '2018 HONDA CIVIC');
+    },
+  );
 
   test(
     'JPG has valid JPEG bytes, original size, and white transparent areas',
