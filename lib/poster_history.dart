@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:sembast/sembast.dart';
 
+import 'auction_vehicle.dart';
 import 'poster.dart';
 import 'storage/database_native.dart'
     if (dart.library.js_interop) 'storage/database_web.dart';
@@ -53,6 +54,7 @@ class PosterHistory {
   Future<Database>? _database;
   final _entries = intMapStoreFactory.store('entries');
   final _photos = intMapStoreFactory.store('photos');
+  final _auctionVehicles = intMapStoreFactory.store('auction_vehicles');
 
   Future<Database> get _db async {
     try {
@@ -150,5 +152,59 @@ class PosterHistory {
       await _entries.record(id).delete(txn);
       await _photos.record(id).delete(txn);
     });
+  }
+
+  /// Saves a vehicle in the separate auction-list workspace.
+  ///
+  /// Auction data deliberately has its own store so poster drafts keep their
+  /// existing shape and users can maintain a complete auction list without
+  /// creating a poster for every row.
+  Future<int> createAuctionVehicle(AuctionVehicle vehicle) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    return _auctionVehicles.add(await _db, {
+      'version': 1,
+      'vehicle': vehicle.toJson(),
+      'createdAt': now,
+      'updatedAt': now,
+    });
+  }
+
+  Future<void> updateAuctionVehicle(int id, AuctionVehicle vehicle) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      final previous = await _auctionVehicles.record(id).get(txn);
+      if (previous == null) {
+        throw StateError('This auction vehicle is no longer available.');
+      }
+      await _auctionVehicles.record(id).put(txn, {
+        'version': 1,
+        'vehicle': vehicle.toJson(),
+        'createdAt': previous['createdAt'],
+        'updatedAt': DateTime.now().toUtc().toIso8601String(),
+      });
+    });
+  }
+
+  Future<List<AuctionVehicleEntry>> listAuctionVehicles() async {
+    final records = await _auctionVehicles.find(
+      await _db,
+      finder: Finder(sortOrders: [SortOrder('createdAt')]),
+    );
+    return records
+        .map(
+          (record) => AuctionVehicleEntry(
+            id: record.key,
+            vehicle: AuctionVehicle.fromJson(
+              Map<String, Object?>.from(record.value['vehicle'] as Map),
+            ),
+            createdAt: DateTime.parse(record.value['createdAt'] as String),
+            updatedAt: DateTime.parse(record.value['updatedAt'] as String),
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> deleteAuctionVehicle(int id) async {
+    await _auctionVehicles.record(id).delete(await _db);
   }
 }

@@ -15,6 +15,7 @@ import 'poster.dart';
 import 'poster_export.dart';
 import 'poster_history.dart';
 import 'history_screen.dart';
+import 'auction_vehicles_screen.dart';
 import 'gallery_export.dart';
 import 'studio_ui.dart';
 import 'custom_template.dart';
@@ -34,14 +35,131 @@ class VehiclePosterApp extends StatelessWidget {
       title: 'Vehicle Poster',
       debugShowCheckedModeBanner: false,
       theme: studioTheme(),
-      home: const EditorScreen(),
+      home: const WorkspaceScreen(),
     );
   }
 }
 
+enum _WorkspaceTab { create, auction, history }
+
+class WorkspaceScreen extends StatefulWidget {
+  final PosterHistory? history;
+
+  const WorkspaceScreen({super.key, this.history});
+
+  @override
+  State<WorkspaceScreen> createState() => _WorkspaceScreenState();
+}
+
+class _WorkspaceScreenState extends State<WorkspaceScreen> {
+  final _editorKey = GlobalKey<_EditorScreenState>();
+  final _historyRefresh = ValueNotifier<int>(0);
+  late final PosterHistory _history;
+  late final Widget _editorPage;
+  late final Widget _auctionPage;
+  late final Widget _historyPage;
+  var _active = _WorkspaceTab.create;
+  var _visitedAuction = false;
+  var _visitedHistory = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _history = widget.history ?? PosterHistory.instance;
+    _editorPage = EditorScreen(
+      key: _editorKey,
+      history: _history,
+      embedded: true,
+      onShowHistory: () => _showTab(_WorkspaceTab.history),
+      onShowAuctionVehicles: () => _showTab(_WorkspaceTab.auction),
+    );
+    _auctionPage = AuctionVehiclesScreen(history: _history, embedded: true);
+    _historyPage = HistoryScreen(
+      history: _history,
+      embedded: true,
+      refreshSignal: _historyRefresh,
+      onSelectEditor: () => _showTab(_WorkspaceTab.create),
+      onDraftSelected: _openDraft,
+    );
+  }
+
+  @override
+  void dispose() {
+    _historyRefresh.dispose();
+    super.dispose();
+  }
+
+  String get _section => switch (_active) {
+    _WorkspaceTab.create => 'Create',
+    _WorkspaceTab.auction => 'Auction List',
+    _WorkspaceTab.history => 'History',
+  };
+
+  void _showTab(_WorkspaceTab tab) {
+    if (!mounted) return;
+    if (tab == _WorkspaceTab.auction) _visitedAuction = true;
+    if (tab == _WorkspaceTab.history) _visitedHistory = true;
+    if (tab == _WorkspaceTab.history) {
+      _historyRefresh.value++;
+    }
+    if (_active == tab) return;
+    setState(() => _active = tab);
+    if (tab == _WorkspaceTab.create) {
+      _editorKey.currentState?._verifyCurrentDraftStillExists();
+    }
+  }
+
+  Future<void> _selectTab(_WorkspaceTab tab) async {
+    if (tab == _active) {
+      _showTab(tab);
+      return;
+    }
+    if (_active == _WorkspaceTab.create) {
+      final editor = _editorKey.currentState;
+      if (editor != null && !await editor._confirmDiscard()) return;
+    }
+    if (!mounted) return;
+    _showTab(tab);
+  }
+
+  Future<void> _openDraft(PosterDraft draft) async {
+    await _editorKey.currentState?._loadDraft(draft);
+    if (mounted) _showTab(_WorkspaceTab.create);
+  }
+
+  @override
+  Widget build(BuildContext context) => StudioShell(
+    section: _section,
+    onEditor: () => _selectTab(_WorkspaceTab.create),
+    onAuctionVehicles: () => _selectTab(_WorkspaceTab.auction),
+    onHistory: () => _selectTab(_WorkspaceTab.history),
+    onNew: _active == _WorkspaceTab.create
+        ? () => _editorKey.currentState?._newPoster()
+        : null,
+    child: IndexedStack(
+      index: _active.index,
+      children: [
+        _editorPage,
+        _visitedAuction ? _auctionPage : const SizedBox.expand(),
+        _visitedHistory ? _historyPage : const SizedBox.expand(),
+      ],
+    ),
+  );
+}
+
 class EditorScreen extends StatefulWidget {
   final PosterHistory? history;
-  const EditorScreen({super.key, this.history});
+  final bool embedded;
+  final VoidCallback? onShowHistory;
+  final VoidCallback? onShowAuctionVehicles;
+
+  const EditorScreen({
+    super.key,
+    this.history,
+    this.embedded = false,
+    this.onShowHistory,
+    this.onShowAuctionVehicles,
+  });
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -299,21 +417,15 @@ class _EditorScreenState extends State<EditorScreen> {
     if (!_dirty) return true;
     return await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Unsaved changes'),
-            content: const Text(
-              'Save your draft first to keep these changes, or discard them to continue.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Keep editing'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Discard changes'),
-              ),
-            ],
+          builder: (context) => const StudioConfirmDialog(
+            title: 'Unsaved changes',
+            message:
+                'Save your draft first to keep these changes, or discard them to continue.',
+            cancelLabel: 'Keep editing',
+            confirmLabel: 'Discard changes',
+            icon: Icons.edit_note_outlined,
+            confirmIcon: Icons.delete_sweep_outlined,
+            destructive: true,
           ),
         ) ??
         false;
@@ -333,47 +445,77 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _openHistory() async {
     if (!await _confirmDiscard() || !mounted) return;
+    final onShowHistory = widget.onShowHistory;
+    if (onShowHistory != null) {
+      onShowHistory();
+      return;
+    }
     final draft = await Navigator.push<PosterDraft>(
       context,
       MaterialPageRoute(builder: (_) => HistoryScreen(history: _history)),
     );
     if (!mounted) return;
     if (draft != null) {
-      CustomPosterTemplate? template;
-      try {
-        if (draft.templateSvg != null) {
-          template = CustomPosterTemplate.parse(
-            draft.templateName ?? 'Imported template',
-            draft.templateSvg!,
-          );
-        }
-      } catch (error) {
-        _showError('Could not restore the saved template: $error');
-        return;
-      }
-      setState(() {
-        _customTemplate = template;
-        for (final entry in draft.vehicle.toJson().entries) {
-          _controllers[entry.key]!.text = entry.value;
-        }
-        _photos.setAll(0, draft.photos);
-        _draftId = draft.id;
-        _dirty = false;
-      });
-    } else if (_draftId != null) {
-      // The currently edited entry may have been deleted in History.
-      try {
-        final entries = await _history.list();
-        if (mounted && !entries.any((entry) => entry.id == _draftId)) {
-          setState(() {
-            _draftId = null;
-            _dirty = true;
-          });
-        }
-      } catch (error) {
-        _showError(error);
-      }
+      await _loadDraft(draft);
+    } else {
+      await _verifyCurrentDraftStillExists();
     }
+  }
+
+  Future<void> _loadDraft(PosterDraft draft) async {
+    CustomPosterTemplate? template;
+    try {
+      if (draft.templateSvg != null) {
+        template = CustomPosterTemplate.parse(
+          draft.templateName ?? 'Imported template',
+          draft.templateSvg!,
+        );
+      }
+    } catch (error) {
+      _showError('Could not restore the saved template: $error');
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _customTemplate = template;
+      for (final entry in draft.vehicle.toJson().entries) {
+        _controllers[entry.key]!.text = entry.value;
+      }
+      _photos.setAll(0, draft.photos);
+      _draftId = draft.id;
+      _dirty = false;
+    });
+  }
+
+  Future<void> _verifyCurrentDraftStillExists() async {
+    if (_draftId == null) return;
+    // The currently edited entry may have been deleted in History.
+    try {
+      final entries = await _history.list();
+      if (mounted && !entries.any((entry) => entry.id == _draftId)) {
+        setState(() {
+          _draftId = null;
+          _dirty = true;
+        });
+      }
+    } catch (error) {
+      _showError(error);
+    }
+  }
+
+  Future<void> _openAuctionVehicles() async {
+    if (!await _confirmDiscard() || !mounted) return;
+    final onShowAuctionVehicles = widget.onShowAuctionVehicles;
+    if (onShowAuctionVehicles != null) {
+      onShowAuctionVehicles();
+      return;
+    }
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AuctionVehiclesScreen(history: _history),
+      ),
+    );
   }
 
   Future<void> _importSpreadsheet() async {
@@ -986,13 +1128,8 @@ class _EditorScreenState extends State<EditorScreen> {
   );
 
   @override
-  Widget build(BuildContext context) => StudioShell(
-    section: 'Create',
-    busy: _busy,
-    onNew: _newPoster,
-    onHistory: _openHistory,
-    footer: _editorFooter(),
-    child: LayoutBuilder(
+  Widget build(BuildContext context) {
+    final body = LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 720;
         return SingleChildScrollView(
@@ -1111,8 +1248,25 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
         );
       },
-    ),
-  );
+    );
+    if (widget.embedded) {
+      return Column(
+        children: [
+          Expanded(child: body),
+          _editorFooter(),
+        ],
+      );
+    }
+    return StudioShell(
+      section: 'Create',
+      busy: _busy,
+      onNew: _newPoster,
+      onHistory: _openHistory,
+      onAuctionVehicles: _openAuctionVehicles,
+      footer: _editorFooter(),
+      child: body,
+    );
+  }
 }
 
 // ============================================================================

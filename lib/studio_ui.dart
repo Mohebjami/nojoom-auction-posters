@@ -77,6 +77,7 @@ class StudioShell extends StatelessWidget {
     this.footer,
     this.onEditor,
     this.onHistory,
+    this.onAuctionVehicles,
     this.onNew,
     this.busy = false,
   });
@@ -86,6 +87,7 @@ class StudioShell extends StatelessWidget {
   final Widget? footer;
   final VoidCallback? onEditor;
   final VoidCallback? onHistory;
+  final VoidCallback? onAuctionVehicles;
   final VoidCallback? onNew;
   final bool busy;
 
@@ -101,6 +103,9 @@ class StudioShell extends StatelessWidget {
               : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
           child: InkWell(
+            key: ValueKey(
+              'studio-tab-${label.toLowerCase().replaceAll(' ', '-')}',
+            ),
             borderRadius: BorderRadius.circular(16),
             onTap: busy ? null : action,
             child: Padding(
@@ -122,16 +127,21 @@ class StudioShell extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: selected ? Colors.white : Colors.white60,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: selected ? Colors.white : Colors.white60,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
                     ),
                   ),
                   if (selected) ...[
-                    const Spacer(),
                     const CircleAvatar(
                       radius: 3,
                       backgroundColor: StudioColors.accent,
@@ -203,27 +213,37 @@ class StudioShell extends StatelessWidget {
                                   size: 25,
                                 ),
                                 SizedBox(width: 10),
-                                Text(
-                                  'poster\nstudio.',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 17,
-                                    height: .98,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: -.6,
+                                Expanded(
+                                  child: Text(
+                                    'poster\nstudio.',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 17,
+                                      height: .98,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: -.6,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
                           _nav('Create', Icons.dashboard_outlined, onEditor),
+                          if (onAuctionVehicles != null ||
+                              section == 'Auction List')
+                            _nav(
+                              'Auction List',
+                              Icons.gavel_outlined,
+                              onAuctionVehicles,
+                            ),
                           if (onHistory != null || section == 'History')
                             _nav('History', Icons.history_rounded, onHistory),
                           if (section == 'Preview')
                             _nav('Preview', Icons.image_outlined, null),
                           const Spacer(),
-                         
-                         
+
                           // Container(
                           //   padding: const EdgeInsets.all(14),
                           //   decoration: BoxDecoration(
@@ -283,8 +303,6 @@ class StudioShell extends StatelessWidget {
                           //     ],
                           //   ),
                           // ),
-                          
-                          
                           const Padding(
                             padding: EdgeInsets.fromLTRB(10, 18, 0, 2),
                             child: Row(
@@ -295,11 +313,15 @@ class StudioShell extends StatelessWidget {
                                   color: Colors.white54,
                                 ),
                                 SizedBox(width: 6),
-                                Text(
-                                  'Your personal workspace',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Colors.white54,
+                                Expanded(
+                                  child: Text(
+                                    'Your personal workspace',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      color: Colors.white54,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -386,6 +408,15 @@ class StudioShell extends StatelessWidget {
                                     onPressed: busy ? null : onHistory,
                                     icon: const Icon(
                                       Icons.history_rounded,
+                                      size: 21,
+                                    ),
+                                  ),
+                                if (!desktop && onAuctionVehicles != null)
+                                  IconButton(
+                                    tooltip: 'Auction list',
+                                    onPressed: busy ? null : onAuctionVehicles,
+                                    icon: const Icon(
+                                      Icons.gavel_outlined,
                                       size: 21,
                                     ),
                                   ),
@@ -484,6 +515,124 @@ class StudioCard extends StatelessWidget {
     ),
     child: child,
   );
+}
+
+/// A shared confirmation dialog that matches the studio workspace panels.
+class StudioConfirmDialog extends StatelessWidget {
+  const StudioConfirmDialog({
+    super.key,
+    required this.title,
+    required this.message,
+    required this.confirmLabel,
+    required this.cancelLabel,
+    required this.icon,
+    this.confirmIcon = Icons.check_rounded,
+    this.destructive = false,
+  });
+
+  final String title;
+  final String message;
+  final String confirmLabel;
+  final String cancelLabel;
+  final IconData icon;
+  final IconData confirmIcon;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final primaryColor = destructive
+        ? const Color(0xffb84b3a)
+        : StudioColors.accent;
+    final cancel = OutlinedButton(
+      onPressed: () => Navigator.of(context).pop(false),
+      child: Text(cancelLabel),
+    );
+    final confirm = FilledButton.icon(
+      onPressed: () => Navigator.of(context).pop(true),
+      style: FilledButton.styleFrom(backgroundColor: primaryColor),
+      icon: Icon(confirmIcon, size: 18),
+      label: Text(confirmLabel),
+    );
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: StudioCard(
+          padding: const EdgeInsets.all(24),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final stackActions = constraints.maxWidth < 400;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: StudioColors.paper,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: StudioColors.line),
+                        ),
+                        child: Icon(icon, color: primaryColor, size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              color: StudioColors.ink,
+                              fontSize: 20,
+                              height: 1.15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    message,
+                    style: const TextStyle(
+                      color: StudioColors.muted,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Divider(height: 1),
+                  ),
+                  if (stackActions)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [cancel, const SizedBox(height: 10), confirm],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(child: cancel),
+                        const SizedBox(width: 12),
+                        Expanded(child: confirm),
+                      ],
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class StudioHeading extends StatelessWidget {

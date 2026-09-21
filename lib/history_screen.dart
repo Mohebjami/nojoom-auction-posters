@@ -2,12 +2,25 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import 'auction_vehicles_screen.dart';
 import 'poster_history.dart';
 import 'studio_ui.dart';
 
 class HistoryScreen extends StatefulWidget {
   final PosterHistory history;
-  const HistoryScreen({super.key, required this.history});
+  final bool embedded;
+  final VoidCallback? onSelectEditor;
+  final Future<void> Function(PosterDraft draft)? onDraftSelected;
+  final Listenable? refreshSignal;
+
+  const HistoryScreen({
+    super.key,
+    required this.history,
+    this.embedded = false,
+    this.onSelectEditor,
+    this.onDraftSelected,
+    this.refreshSignal,
+  });
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -25,6 +38,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   void dispose() {
+    widget.refreshSignal?.removeListener(_reloadEntries);
     _search.dispose();
     super.dispose();
   }
@@ -39,13 +53,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
   void initState() {
     super.initState();
     _entries = widget.history.list();
+    widget.refreshSignal?.addListener(_reloadEntries);
+  }
+
+  @override
+  void didUpdateWidget(covariant HistoryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal == widget.refreshSignal) return;
+    oldWidget.refreshSignal?.removeListener(_reloadEntries);
+    widget.refreshSignal?.addListener(_reloadEntries);
+  }
+
+  void _reloadEntries() {
+    if (!mounted) return;
+    setState(() {
+      _thumbnails.clear();
+      _entries = widget.history.list();
+    });
   }
 
   Future<void> _open(PosterHistoryEntry entry) async {
     setState(() => _busy = true);
     try {
       final draft = await widget.history.load(entry.id);
-      if (mounted) Navigator.pop(context, draft);
+      if (!mounted) return;
+      final onDraftSelected = widget.onDraftSelected;
+      if (onDraftSelected != null) {
+        await onDraftSelected(draft);
+      } else {
+        Navigator.pop(context, draft);
+      }
     } catch (error) {
       _showError(error);
     } finally {
@@ -63,21 +100,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> _delete(PosterHistoryEntry entry) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete saved poster?'),
-        content: Text(
-          'Remove ${entry.title} from history? Images already exported to your device will remain.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
+      builder: (context) => StudioConfirmDialog(
+        title: 'Delete saved poster?',
+        message:
+            'Remove ${entry.title} from history? Images already exported to your device will remain.',
+        cancelLabel: 'Cancel',
+        confirmLabel: 'Delete',
+        icon: Icons.delete_outline_rounded,
+        confirmIcon: Icons.delete_outline_rounded,
+        destructive: true,
       ),
     );
     if (confirmed != true || !mounted) return;
@@ -202,7 +233,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     _search.clear();
                     _recentOnly = false;
                   })
-                : () => Navigator.pop(context),
+                : () {
+                    final onSelectEditor = widget.onSelectEditor;
+                    if (onSelectEditor != null) {
+                      onSelectEditor();
+                    } else {
+                      Navigator.pop(context);
+                    }
+                  },
             icon: Icon(
               error
                   ? Icons.refresh
@@ -480,11 +518,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => StudioShell(
-    section: 'History',
-    busy: _busy,
-    onEditor: () => Navigator.pop(context),
-    child: FutureBuilder<List<PosterHistoryEntry>>(
+  Widget build(BuildContext context) {
+    final body = FutureBuilder<List<PosterHistoryEntry>>(
       future: _entries,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
@@ -666,6 +701,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
           },
         );
       },
-    ),
-  );
+    );
+    if (widget.embedded) return body;
+    return StudioShell(
+      section: 'History',
+      busy: _busy,
+      onEditor: widget.onSelectEditor ?? () => Navigator.pop(context),
+      onAuctionVehicles: () => Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AuctionVehiclesScreen(history: widget.history),
+        ),
+      ),
+      child: body,
+    );
+  }
 }
