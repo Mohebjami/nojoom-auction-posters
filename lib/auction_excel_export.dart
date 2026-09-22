@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 
 import 'auction_vehicle.dart';
+import 'vehicle_number_sort.dart';
 
 /// Builds a self-contained XLSX workbook using the same auction-list layout
 /// as the supplied reference: a title and date, the blue auction table, red
@@ -23,9 +24,21 @@ abstract final class AuctionExcelExporter {
     'Remarks',
   ];
 
-  static Uint8List export(List<AuctionVehicleEntry> entries, {DateTime? date}) {
+  static Uint8List export(
+    List<AuctionVehicleEntry> entries, {
+    DateTime? date,
+    bool numberAscending = true,
+  }) {
     final exportedAt = date ?? DateTime.now();
-    final rows = List<AuctionVehicleEntry>.of(entries)..sort(_compareEntries);
+    final rows = List<AuctionVehicleEntry>.of(entries)
+      ..sort((a, b) {
+        final comparison = compareVehicleNumbers(
+          a.vehicle.number,
+          b.vehicle.number,
+          ascending: numberAscending,
+        );
+        return comparison == 0 ? a.id.compareTo(b.id) : comparison;
+      });
     final archive = Archive()
       ..add(ArchiveFile.string('[Content_Types].xml', _contentTypesXml))
       ..add(ArchiveFile.string('_rels/.rels', _rootRelationshipsXml))
@@ -54,20 +67,6 @@ abstract final class AuctionExcelExporter {
         ArchiveFile.string('xl/worksheets/sheet2.xml', _sourceSheetXml(rows)),
       );
     return ZipEncoder().encodeBytes(archive, modified: exportedAt);
-  }
-
-  static int _compareEntries(AuctionVehicleEntry a, AuctionVehicleEntry b) {
-    final aNumber = int.tryParse(a.vehicle.number.trim());
-    final bNumber = int.tryParse(b.vehicle.number.trim());
-    if (aNumber != null && bNumber != null) {
-      final comparison = aNumber.compareTo(bNumber);
-      return comparison == 0 ? a.id.compareTo(b.id) : comparison;
-    }
-    if (aNumber != null) return -1;
-    if (bNumber != null) return 1;
-    return a.vehicle.number.toLowerCase().compareTo(
-      b.vehicle.number.toLowerCase(),
-    );
   }
 
   static String _worksheetXml(

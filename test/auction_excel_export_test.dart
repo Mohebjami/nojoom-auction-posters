@@ -21,6 +21,18 @@ String _archiveText(Archive archive, String path) {
 }
 
 void main() {
+  test('Auction export follows descending numeric order when selected', () {
+    final archive = ZipDecoder().decodeBytes(
+      AuctionExcelExporter.export([
+        _entry(1, const AuctionVehicle(number: '2')),
+        _entry(2, const AuctionVehicle(number: '10')),
+      ], numberAscending: false),
+    );
+    final sheet = _archiveText(archive, 'xl/worksheets/sheet1.xml');
+    expect(sheet, contains('<c r="A4" s="13"><v>10</v></c>'));
+    expect(sheet, contains('<c r="A5" s="25"><v>2</v></c>'));
+  });
+
   test('Auction export creates a styled XLSX in the supplied list layout', () {
     final bytes = AuctionExcelExporter.export([
       _entry(

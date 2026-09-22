@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'auction_vehicles_screen.dart';
 import 'poster_history.dart';
 import 'studio_ui.dart';
+import 'vehicle_number_sort.dart';
+
+enum _HistorySort { numberAscending, numberDescending, newest, oldest }
 
 class HistoryScreen extends StatefulWidget {
   final PosterHistory history;
@@ -32,7 +35,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   String _query = '';
   bool _recentOnly = false;
   bool _grid = true;
-  bool _newestFirst = true;
+  _HistorySort _sort = _HistorySort.numberAscending;
   final _search = TextEditingController();
   final Map<int, Future<Uint8List?>> _thumbnails = {};
 
@@ -462,8 +465,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         DropdownButtonHideUnderline(
-          child: DropdownButton<bool>(
-            value: _newestFirst,
+          child: DropdownButton<_HistorySort>(
+            value: _sort,
             borderRadius: BorderRadius.circular(16),
             style: const TextStyle(
               fontFamily: 'Roboto',
@@ -471,10 +474,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
               fontSize: 12,
             ),
             items: const [
-              DropdownMenuItem(value: true, child: Text('Newest first')),
-              DropdownMenuItem(value: false, child: Text('Oldest first')),
+              DropdownMenuItem(
+                value: _HistorySort.numberAscending,
+                child: Text('Number: low to high'),
+              ),
+              DropdownMenuItem(
+                value: _HistorySort.numberDescending,
+                child: Text('Number: high to low'),
+              ),
+              DropdownMenuItem(
+                value: _HistorySort.newest,
+                child: Text('Newest first'),
+              ),
+              DropdownMenuItem(
+                value: _HistorySort.oldest,
+                child: Text('Oldest first'),
+              ),
             ],
-            onChanged: (value) => setState(() => _newestFirst = value!),
+            onChanged: (value) => setState(() => _sort = value!),
           ),
         ),
         const SizedBox(width: 12),
@@ -538,9 +555,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
           return text.contains(_query) &&
               (!_recentOnly || entry.updatedAt.isAfter(cutoff));
         }).toList();
-        if (!_newestFirst) {
-          filtered.sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
-        }
+        filtered.sort((a, b) {
+          final comparison = switch (_sort) {
+            _HistorySort.numberAscending ||
+            _HistorySort.numberDescending => compareVehicleNumbers(
+              a.vehicle.number,
+              b.vehicle.number,
+              ascending: _sort == _HistorySort.numberAscending,
+            ),
+            _HistorySort.newest => b.updatedAt.compareTo(a.updatedAt),
+            _HistorySort.oldest => a.updatedAt.compareTo(b.updatedAt),
+          };
+          return comparison == 0 ? a.id.compareTo(b.id) : comparison;
+        });
         return LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 720;

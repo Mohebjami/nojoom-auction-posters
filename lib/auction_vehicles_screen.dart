@@ -1,11 +1,16 @@
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'auction_excel_export.dart';
 import 'auction_vehicle.dart';
 import 'poster_history.dart';
 import 'studio_ui.dart';
+import 'vehicle_number_sort.dart';
 
 class AuctionVehiclesScreen extends StatefulWidget {
   final PosterHistory history;
@@ -26,6 +31,7 @@ class _AuctionVehiclesScreenState extends State<AuctionVehiclesScreen> {
   final _search = TextEditingController();
   bool _busy = false;
   String _query = '';
+  bool _numberAscending = true;
 
   @override
   void initState() {
@@ -146,7 +152,11 @@ class _AuctionVehiclesScreenState extends State<AuctionVehiclesScreen> {
     setState(() => _busy = true);
     try {
       final now = DateTime.now();
-      final bytes = AuctionExcelExporter.export(entries, date: now);
+      final bytes = AuctionExcelExporter.export(
+        entries,
+        date: now,
+        numberAscending: _numberAscending,
+      );
       final name =
           'auction-list-${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}.xlsx';
       const type = XTypeGroup(
@@ -166,6 +176,40 @@ class _AuctionVehiclesScreenState extends State<AuctionVehiclesScreen> {
       if (kIsWeb) {
         await file.saveTo(name);
         message = 'Excel download started. Check your browser downloads.';
+      } else if (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS) {
+        final directory = await getTemporaryDirectory();
+        final exportDirectory = Directory(
+          '${directory.path}/auction-list-exports',
+        );
+        await exportDirectory.create(recursive: true);
+        final exportFile = File('${exportDirectory.path}/$name');
+        await exportFile.writeAsBytes(bytes, flush: true);
+        if (!mounted) return;
+
+        Rect? shareOrigin;
+        final renderObject = context.findRenderObject();
+        if (renderObject is RenderBox) {
+          shareOrigin =
+              renderObject.localToGlobal(Offset.zero) & renderObject.size;
+        }
+        await SharePlus.instance.share(
+          ShareParams(
+            files: [
+              XFile(
+                exportFile.path,
+                mimeType:
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              ),
+            ],
+            fileNameOverrides: [name],
+            title: 'Auction List',
+            subject: 'Auction List',
+            text: 'Auction List',
+            sharePositionOrigin: shareOrigin ?? const Rect.fromLTWH(0, 0, 1, 1),
+          ),
+        );
+        message = 'Excel file shared.';
       } else {
         final location = await getSaveLocation(
           suggestedName: name,
@@ -188,8 +232,7 @@ class _AuctionVehiclesScreenState extends State<AuctionVehiclesScreen> {
   }
 
   List<AuctionVehicleEntry> _filtered(List<AuctionVehicleEntry> entries) {
-    if (_query.isEmpty) return entries;
-    return entries.where((entry) {
+    final visible = entries.where((entry) {
       final vehicle = entry.vehicle;
       return [
         vehicle.number,
@@ -204,6 +247,15 @@ class _AuctionVehiclesScreenState extends State<AuctionVehiclesScreen> {
         vehicle.priceUsd,
       ].join(' ').toLowerCase().contains(_query);
     }).toList();
+    visible.sort((a, b) {
+      final comparison = compareVehicleNumbers(
+        a.vehicle.number,
+        b.vehicle.number,
+        ascending: _numberAscending,
+      );
+      return comparison == 0 ? a.id.compareTo(b.id) : comparison;
+    });
+    return visible;
   }
 
   Widget _summary(int count) => StudioCard(
@@ -249,6 +301,8 @@ class _AuctionVehiclesScreenState extends State<AuctionVehiclesScreen> {
             children: [
               Expanded(child: _searchField()),
               const SizedBox(width: 12),
+              _sortControl(),
+              const SizedBox(width: 12),
               OutlinedButton.icon(
                 onPressed: _busy || entries.isEmpty
                     ? null
@@ -268,6 +322,8 @@ class _AuctionVehiclesScreenState extends State<AuctionVehiclesScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _searchField(),
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerRight, child: _sortControl()),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -312,6 +368,21 @@ class _AuctionVehiclesScreenState extends State<AuctionVehiclesScreen> {
               }),
               icon: const Icon(Icons.close_rounded, size: 18),
             ),
+    ),
+  );
+
+  Widget _sortControl() => DropdownButtonHideUnderline(
+    child: DropdownButton<bool>(
+      value: _numberAscending,
+      borderRadius: BorderRadius.circular(16),
+      style: const TextStyle(color: StudioColors.ink, fontSize: 12),
+      items: const [
+        DropdownMenuItem(value: true, child: Text('Number: low to high')),
+        DropdownMenuItem(value: false, child: Text('Number: high to low')),
+      ],
+      onChanged: _busy
+          ? null
+          : (value) => setState(() => _numberAscending = value!),
     ),
   );
 

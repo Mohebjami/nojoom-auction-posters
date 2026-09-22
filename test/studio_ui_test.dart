@@ -120,7 +120,19 @@ void main() {
       await tester.tap(find.byTooltip('List view'));
       await tester.pumpAndSettle();
       expect(find.byType(SliverGrid), findsNothing);
-      await tester.tap(find.text('Newest first'));
+      expect(
+        tester.getTopLeft(find.text('2010 TOYOTA COROLLA')).dy,
+        lessThan(tester.getTopLeft(find.text('2020 HONDA CIVIC')).dy),
+      );
+      await tester.tap(find.text('Number: low to high'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Number: high to low').last);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('2020 HONDA CIVIC')).dy,
+        lessThan(tester.getTopLeft(find.text('2010 TOYOTA COROLLA')).dy),
+      );
+      await tester.tap(find.text('Number: high to low'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Oldest first').last);
       await tester.pumpAndSettle();

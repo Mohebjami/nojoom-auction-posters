@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sembast/sembast_memory.dart';
 import 'package:vehicle_poster/auction_vehicles_screen.dart';
+import 'package:vehicle_poster/auction_vehicle.dart';
 import 'package:vehicle_poster/poster_history.dart';
 import 'package:vehicle_poster/studio_ui.dart';
 
@@ -14,6 +15,62 @@ Future<void> _settleStorage(WidgetTester tester) async {
 }
 
 void main() {
+  for (final width in [390.0, 880.0]) {
+    testWidgets('Auction number sorting works at $width', (tester) async {
+      tester.view.physicalSize = Size(width, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final database = (await tester.runAsync(
+        () => databaseFactoryMemory.openDatabase('auction-sort-$width'),
+      ))!;
+      addTearDown(database.close);
+      final history = PosterHistory(openDatabase: () async => database);
+      await tester.runAsync(() async {
+        for (final number in ['10', '2', '1']) {
+          await history.createAuctionVehicle(
+            AuctionVehicle(number: number, vehicleType: 'Vehicle $number'),
+          );
+        }
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: studioTheme(),
+          home: AuctionVehiclesScreen(history: history),
+        ),
+      );
+      await _settleStorage(tester);
+      List<String> visibleNumbers() => tester
+          .widgetList<Text>(find.byType(Text))
+          .map((widget) => widget.data ?? '')
+          .where(
+            (text) => width >= 880
+                ? ['1', '2', '10'].contains(text)
+                : text.startsWith('NO. '),
+          )
+          .toList();
+      expect(
+        visibleNumbers(),
+        width >= 880 ? ['1', '2', '10'] : ['NO. 1', 'NO. 2', 'NO. 10'],
+      );
+      await tester.tap(find.text('Number: low to high'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Number: high to low').last);
+      await tester.pumpAndSettle();
+      expect(
+        visibleNumbers(),
+        width >= 880 ? ['10', '2', '1'] : ['NO. 10', 'NO. 2', 'NO. 1'],
+      );
+      await tester.enterText(find.byType(TextField), 'Vehicle 1');
+      await tester.pumpAndSettle();
+      expect(
+        visibleNumbers(),
+        width >= 880 ? ['10', '1'] : ['NO. 10', 'NO. 1'],
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('Auction list allows blank mileage and prices', (tester) async {
     final database = (await tester.runAsync(
       () => databaseFactoryMemory.openDatabase('auction-screen'),
