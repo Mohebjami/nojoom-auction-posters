@@ -8,6 +8,14 @@ import 'poster.dart';
 import 'storage/database_native.dart'
     if (dart.library.js_interop) 'storage/database_web.dart';
 
+abstract final class PosterSections {
+  static const newVehicles = 'new';
+  static const oldVehicles = 'old';
+
+  static String normalize(Object? value) =>
+      value == newVehicles ? newVehicles : oldVehicles;
+}
+
 class PosterDraft {
   final int id;
   final VehicleDetails vehicle;
@@ -15,6 +23,7 @@ class PosterDraft {
   final List<Uint8List?> photos;
   final String? templateSvg;
   final String? templateName;
+  final String section;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -26,6 +35,7 @@ class PosterDraft {
     required this.updatedAt,
     this.templateSvg,
     this.templateName,
+    this.section = PosterSections.oldVehicles,
   });
 }
 
@@ -33,8 +43,14 @@ class PosterHistoryEntry {
   final int id;
   final VehicleDetails vehicle;
   final DateTime updatedAt;
+  final String section;
 
-  const PosterHistoryEntry(this.id, this.vehicle, this.updatedAt);
+  const PosterHistoryEntry(
+    this.id,
+    this.vehicle,
+    this.updatedAt, {
+    this.section = PosterSections.oldVehicles,
+  });
 
   String get title {
     final label = [
@@ -78,6 +94,7 @@ class PosterHistory {
               Map<String, Object?>.from(record.value['vehicle'] as Map),
             ),
             DateTime.parse(record.value['updatedAt'] as String),
+            section: PosterSections.normalize(record.value['section']),
           ),
         )
         .toList();
@@ -103,6 +120,7 @@ class PosterHistory {
             .toList(),
         templateSvg: entry['templateSvg'] as String?,
         templateName: entry['templateName'] as String?,
+        section: PosterSections.normalize(entry['section']),
         createdAt: DateTime.parse(entry['createdAt'] as String),
         updatedAt: DateTime.parse(entry['updatedAt'] as String),
       );
@@ -115,6 +133,7 @@ class PosterHistory {
     int? id,
     String? templateSvg,
     String? templateName,
+    String? section,
   }) async {
     if (photos.length != 4) {
       throw ArgumentError('A poster must contain exactly four photo slots.');
@@ -132,9 +151,15 @@ class PosterHistory {
         );
       }
       final entry = <String, Object?>{
-        'version': 2,
+        'version': 3,
         'templateSvg': templateSvg,
         'templateName': templateName,
+        'section': PosterSections.normalize(
+          section ??
+              (previous == null
+                  ? PosterSections.newVehicles
+                  : previous['section']),
+        ),
         'vehicle': vehicle.toJson(),
         'createdAt': previous?['createdAt'] ?? now,
         'updatedAt': now,

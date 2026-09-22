@@ -29,6 +29,13 @@ Future<void> screenshot(WidgetTester tester, GlobalKey key, String name) async {
   });
 }
 
+String dateFolderKey(DateTime value) {
+  final date = value.toLocal();
+  return '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+}
+
 void main() {
   late Uint8List photo;
   setUpAll(() async {
@@ -100,6 +107,11 @@ void main() {
         ),
       );
       await settleStorage(tester);
+      final todayFolder = find.byKey(
+        ValueKey('date-folder-${dateFolderKey(DateTime.now())}'),
+      );
+      await tester.tap(todayFolder);
+      await settleStorage(tester);
       // The visible cards start loading thumbnails after the entry list resolves.
       await settleStorage(tester);
       expect(find.byType(Image), findsOneWidget);
@@ -120,26 +132,21 @@ void main() {
       await tester.tap(find.byTooltip('List view'));
       await tester.pumpAndSettle();
       expect(find.byType(SliverGrid), findsNothing);
-      expect(
-        tester.getTopLeft(find.text('2010 TOYOTA COROLLA')).dy,
-        lessThan(tester.getTopLeft(find.text('2020 HONDA CIVIC')).dy),
-      );
+      await tester.ensureVisible(todayFolder);
+      await tester.tap(todayFolder);
+      await tester.pumpAndSettle();
+      expect(find.text('2010 TOYOTA COROLLA'), findsNothing);
+      await tester.tap(todayFolder);
+      await tester.pumpAndSettle();
+      expect(find.text('2010 TOYOTA COROLLA'), findsOneWidget);
       await tester.tap(find.text('Number: low to high'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Number: high to low').last);
       await tester.pumpAndSettle();
-      expect(
-        tester.getTopLeft(find.text('2020 HONDA CIVIC')).dy,
-        lessThan(tester.getTopLeft(find.text('2010 TOYOTA COROLLA')).dy),
-      );
       await tester.tap(find.text('Number: high to low'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Oldest first').last);
       await tester.pumpAndSettle();
-      expect(
-        tester.getTopLeft(find.text('2020 HONDA CIVIC')).dy,
-        lessThan(tester.getTopLeft(find.text('2010 TOYOTA COROLLA')).dy),
-      );
       await tester.enterText(find.byType(TextField), 'TESTVIN123');
       await tester.pumpAndSettle();
       expect(find.text('2020 HONDA CIVIC'), findsNothing);
@@ -151,6 +158,14 @@ void main() {
       await tester.ensureVisible(find.text('Clear filters'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Clear filters'));
+      await tester.pumpAndSettle();
+      final olderFolder = find.byKey(
+        ValueKey(
+          'date-folder-${dateFolderKey(DateTime.now().subtract(const Duration(days: 15)))}',
+        ),
+      );
+      await tester.ensureVisible(olderFolder);
+      await tester.tap(olderFolder);
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byTooltip('Delete 2020 HONDA CIVIC'));
       await tester.pumpAndSettle();

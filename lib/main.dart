@@ -21,6 +21,15 @@ import 'studio_ui.dart';
 import 'custom_template.dart';
 import 'vehicle_import.dart';
 
+Set<String> _vehicleIdentityKeys(VehicleDetails vehicle) {
+  final keys = <String>{};
+  final vin = vehicle.vin.trim().toUpperCase();
+  final number = vehicle.number.trim().toLowerCase();
+  if (vin.isNotEmpty) keys.add('vin:$vin');
+  if (number.isNotEmpty) keys.add('number:$number');
+  return keys;
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const VehiclePosterApp());
@@ -550,11 +559,29 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
 
+      final knownVehicles = <String>{
+        for (final entry in await _history.list())
+          ..._vehicleIdentityKeys(entry.vehicle),
+      };
       var savedCount = 0;
+      var newCount = 0;
+      var oldCount = 0;
       for (final vehicle in vehicles) {
+        final identityKeys = _vehicleIdentityKeys(vehicle);
+        final isOld = identityKeys.any(knownVehicles.contains);
+        final section = isOld
+            ? PosterSections.oldVehicles
+            : PosterSections.newVehicles;
+        if (isOld) {
+          oldCount += 1;
+        } else {
+          newCount += 1;
+          knownVehicles.addAll(identityKeys);
+        }
         final savedId = await _history.save(
           vehicle,
           List<Uint8List?>.filled(4, null),
+          section: section,
         );
         if (savedId > 0) {
           savedCount += 1;
@@ -574,7 +601,8 @@ class _EditorScreenState extends State<EditorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Imported $savedCount draft${savedCount == 1 ? '' : 's'} from the spreadsheet.',
+            'Imported $savedCount draft${savedCount == 1 ? '' : 's'}: '
+            '$newCount new, $oldCount old.',
           ),
         ),
       );

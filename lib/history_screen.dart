@@ -38,6 +38,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   _HistorySort _sort = _HistorySort.numberAscending;
   final _search = TextEditingController();
   final Map<int, Future<Uint8List?>> _thumbnails = {};
+  final Set<String> _openedDateFolders = {};
 
   @override
   void dispose() {
@@ -534,6 +535,184 @@ class _HistoryScreenState extends State<HistoryScreen> {
           );
   }
 
+  String _dateFolderKey(DateTime value) {
+    final date = value.toLocal();
+    return '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+  }
+
+  Map<String, List<PosterHistoryEntry>> _dateFolders(
+    List<PosterHistoryEntry> entries,
+  ) {
+    final folders = <String, List<PosterHistoryEntry>>{};
+    for (final entry in entries) {
+      folders.putIfAbsent(_dateFolderKey(entry.updatedAt), () => []).add(entry);
+    }
+    return folders;
+  }
+
+  Widget _dateFolderHeading(
+    String key,
+    List<PosterHistoryEntry> entries, {
+    required bool wide,
+  }) {
+    final opened = _openedDateFolders.contains(key);
+    final date = MaterialLocalizations.of(
+      context,
+    ).formatMediumDate(entries.first.updatedAt.toLocal());
+    return Padding(
+      padding: EdgeInsets.fromLTRB(wide ? 28 : 16, 18, wide ? 28 : 16, 12),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          key: ValueKey('date-folder-$key'),
+          onTap: () => setState(() {
+            if (opened) {
+              _openedDateFolders.remove(key);
+            } else {
+              _openedDateFolders.add(key);
+            }
+          }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Icon(
+                  opened ? Icons.folder_open_rounded : Icons.folder_rounded,
+                  color: StudioColors.accent,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    date,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -.3,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${entries.length} file${entries.length == 1 ? '' : 's'}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: StudioColors.muted,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  opened
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  color: StudioColors.muted,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionHeading(String label, int count, {required bool fresh}) =>
+      Padding(
+        padding: const EdgeInsets.fromLTRB(28, 18, 28, 12),
+        child: Row(
+          children: [
+            Icon(
+              fresh ? Icons.fiber_new_rounded : Icons.history_rounded,
+              size: 18,
+              color: fresh ? StudioColors.accent : StudioColors.muted,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -.3,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$count',
+              style: const TextStyle(fontSize: 11, color: StudioColors.muted),
+            ),
+          ],
+        ),
+      );
+
+  List<Widget> _dateFolderContents(
+    List<PosterHistoryEntry> entries,
+    BoxConstraints constraints,
+    bool wide,
+  ) {
+    final newEntries = entries
+        .where((entry) => entry.section == PosterSections.newVehicles)
+        .toList();
+    final oldEntries = entries
+        .where((entry) => entry.section == PosterSections.oldVehicles)
+        .toList();
+    return [
+      if (newEntries.isNotEmpty) ...[
+        SliverToBoxAdapter(
+          child: _sectionHeading(
+            'New vehicles',
+            newEntries.length,
+            fresh: true,
+          ),
+        ),
+        _sectionEntries(newEntries, constraints, wide),
+      ],
+      if (oldEntries.isNotEmpty) ...[
+        SliverToBoxAdapter(
+          child: _sectionHeading(
+            'Old vehicles',
+            oldEntries.length,
+            fresh: false,
+          ),
+        ),
+        _sectionEntries(oldEntries, constraints, wide),
+      ],
+    ];
+  }
+
+  Widget _sectionEntries(
+    List<PosterHistoryEntry> entries,
+    BoxConstraints constraints,
+    bool wide,
+  ) {
+    final collection = _grid
+        ? SliverGrid(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => _posterCard(entries[index]),
+              childCount: entries.length,
+            ),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: constraints.maxWidth >= 1000
+                  ? 3
+                  : constraints.maxWidth >= 600
+                  ? 2
+                  : 1,
+              mainAxisExtent: 290,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+            ),
+          )
+        : SliverList.separated(
+            itemCount: entries.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            itemBuilder: (context, index) => _posterCard(entries[index]),
+          );
+    return SliverPadding(
+      padding: EdgeInsets.symmetric(horizontal: wide ? 28 : 16),
+      sliver: collection,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final body = FutureBuilder<List<PosterHistoryEntry>>(
@@ -571,6 +750,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
         return LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 720;
+            final folders = _dateFolders(filtered);
+            final folderKeys = folders.keys.toList()
+              ..sort((a, b) => b.compareTo(a));
             return CustomScrollView(
               slivers: [
                 SliverPadding(
@@ -685,39 +867,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     child: _empty(filtered: entries.isNotEmpty),
                   )
                 else
-                  SliverPadding(
-                    padding: EdgeInsets.symmetric(horizontal: wide ? 28 : 16),
-                    sliver: _grid
-                        ? SliverGrid(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) => _posterCard(filtered[index]),
-                              childCount: filtered.length,
-                            ),
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: constraints.maxWidth >= 1000
-                                      ? 3
-                                      : constraints.maxWidth >= 600
-                                      ? 2
-                                      : 1,
-                                  mainAxisExtent: 290,
-                                  crossAxisSpacing: 16,
-                                  mainAxisSpacing: 16,
-                                ),
-                          )
-                        : SliverList.separated(
-                            itemCount: filtered.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) =>
-                                _posterCard(filtered[index]),
-                          ),
-                  ),
+                  for (final key in folderKeys) ...[
+                    SliverToBoxAdapter(
+                      child: _dateFolderHeading(key, folders[key]!, wide: wide),
+                    ),
+                    if (_openedDateFolders.contains(key)) ...[
+                      ..._dateFolderContents(folders[key]!, constraints, wide),
+                    ],
+                  ],
                 const SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                      'Saved on this device. Select a poster to continue editing.',
+                      'Saved on this device. Open a date folder, then select a poster to continue editing.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: StudioColors.muted, fontSize: 11),
                     ),

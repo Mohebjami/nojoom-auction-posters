@@ -22,6 +22,13 @@ Future<void> settleStorage(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+String dateFolderKey(DateTime value) {
+  final date = value.toLocal();
+  return '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+}
+
 void main() {
   const vehicle = VehicleDetails(
     number: '009',
@@ -101,6 +108,33 @@ void main() {
     expect(await history.list(), isEmpty);
   });
 
+  test('History persists new and old vehicle sections', () async {
+    final db = await databaseFactoryMemory.openDatabase('history-sections');
+    addTearDown(db.close);
+    final history = PosterHistory(openDatabase: () async => db);
+    final newId = await history.save(
+      const VehicleDetails(number: '1', title: 'New vehicle'),
+      [null, null, null, null],
+      section: PosterSections.newVehicles,
+    );
+    final oldId = await history.save(
+      const VehicleDetails(number: '2', title: 'Old vehicle'),
+      [null, null, null, null],
+      section: PosterSections.oldVehicles,
+    );
+
+    final entries = await history.list();
+    expect(
+      entries.firstWhere((entry) => entry.id == newId).section,
+      PosterSections.newVehicles,
+    );
+    expect(
+      entries.firstWhere((entry) => entry.id == oldId).section,
+      PosterSections.oldVehicles,
+    );
+    expect((await history.load(newId)).section, PosterSections.newVehicles);
+  });
+
   test(
     'Spreadsheet rows import as saved drafts with the expected fields',
     () async {
@@ -171,9 +205,24 @@ Number,Vehicle,Year,Color,Price (USD),Stock / ID
       );
       await tester.tap(find.byTooltip('History'));
       await settleStorage(tester);
-      await tester.ensureVisible(find.text('Toyota Corolla'));
+      await tester.drag(
+        find.byType(CustomScrollView).first,
+        const Offset(0, -420),
+      );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Toyota Corolla'));
+      final todayFolder = find.byKey(
+        ValueKey('date-folder-${dateFolderKey(DateTime.now())}'),
+      );
+      await tester.ensureVisible(todayFolder);
+      await tester.tap(todayFolder);
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byType(CustomScrollView).first,
+        const Offset(0, -350),
+      );
+      await tester.pumpAndSettle();
+      final savedTitle = find.text('Toyota Corolla').last;
+      await tester.tap(savedTitle);
       await settleStorage(tester);
       final fields = tester
           .widgetList<TextField>(find.byType(TextField))

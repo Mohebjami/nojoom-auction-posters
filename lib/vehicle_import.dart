@@ -12,11 +12,23 @@ class VehicleListImporter {
       'number',
       'no',
       'no.',
+      's no',
+      'sr no',
+      'sl no',
+      'serial no',
+      'serial number',
       'ref',
       'reference',
       'ref no',
+      'ref number',
       'top-left number',
       'top left number',
+      'auction number',
+      'vehicle number',
+      'vehicle no',
+      'lot',
+      'lot no',
+      'lot number',
     },
     'vin': {
       'vin',
@@ -24,13 +36,60 @@ class VehicleListImporter {
       'stock / id',
       'stock',
       'stockid',
+      'stock number',
+      'stock no',
       'vehicle id',
+      'vehicle identification number',
+      'chassis number',
+      'chassis no',
+      'chassis',
       'id',
     },
-    'title': {'title', 'vehicle', 'vehicle name', 'name', 'car'},
-    'model': {'model', 'year', 'vehicle model', 'make', 'make model'},
-    'price': {'price', 'price usd', 'price (usd)', 'usd', 'amount'},
-    'color': {'color', 'colour', 'vehicle color'},
+    'title': {
+      'title',
+      'vehicle',
+      'vehicle name',
+      'vehicle type',
+      'description',
+      'vehicle description',
+      'vehicle details',
+      'name',
+      'car',
+      'type',
+    },
+    'model': {
+      'model',
+      'year',
+      'model year',
+      'manufacture year',
+      'vehicle model',
+      'make',
+      'make model',
+      'make and model',
+    },
+    'price': {
+      'price',
+      'price usd',
+      'price (usd)',
+      'usd',
+      'amount',
+      'asking price',
+      'starting price',
+      'price in usd',
+      'usd price',
+      'sale price',
+      'auction price',
+      'price sold',
+    },
+    'color': {
+      'color',
+      'colour',
+      'vehicle color',
+      'vehicle colour',
+      'body color',
+      'body colour',
+      'exterior color',
+    },
   };
 
   static Future<List<VehicleDetails>> fromBytes(
@@ -38,7 +97,7 @@ class VehicleListImporter {
     Uint8List bytes,
   ) async {
     final name = fileName.toLowerCase();
-    final data = name.endsWith('.xlsx')
+    final data = name.endsWith('.xlsx') || _looksLikeZip(bytes)
         ? _excelRows(bytes)
         : _delimitedRows(utf8.decode(bytes, allowMalformed: true));
 
@@ -46,11 +105,19 @@ class VehicleListImporter {
       return const [];
     }
 
-    final headerRow = data.first.map((cell) => _clean(cell)).toList();
+    // XLSX files exported by this app have a title and date before the table
+    // header. CSV files may also contain leading notes, so locate the row
+    // that contains the most known headers instead of assuming row zero.
+    final headerIndex = _findHeaderRow(data);
+    if (headerIndex == null) {
+      return const [];
+    }
+
+    final headerRow = data[headerIndex].map((cell) => _clean(cell)).toList();
     final indexMap = _headerIndex(headerRow);
     final results = <VehicleDetails>[];
 
-    for (final row in data.skip(1)) {
+    for (final row in data.skip(headerIndex + 1)) {
       if (row.every((cell) => _clean(cell).isEmpty)) continue;
 
       final vehicle = VehicleDetails(
@@ -85,40 +152,117 @@ class VehicleListImporter {
         : _sharedStrings(
             XmlDocument.parse(utf8.decode(sharedStringsFile.readBytes()!)),
           );
-    final sheetFile = archive.findFile('xl/worksheets/sheet1.xml');
-    if (sheetFile == null) {
-      throw const FormatException('The XLSX file has no first worksheet.');
+    final worksheetFiles = archive.files.where(
+      (file) =>
+          file.name.startsWith('xl/worksheets/') &&
+          file.name.endsWith('.xml'),
+    );
+    if (worksheetFiles.isEmpty) {
+      throw const FormatException('The XLSX file has no worksheets.');
     }
 
-    final document = XmlDocument.parse(utf8.decode(sheetFile.readBytes()!));
-    return document.findAllElements('row').map((row) {
+    List<List<String>>? bestRows;
+    var bestHeaderCount = 0;
+    for (final sheetFile in worksheetFiles) {
+      final document = XmlDocument.parse(
+        utf8.decode(sheetFile.readBytes()!),
+      );
+      final rows = _worksheetRows(document, sharedStrings);
+      final headerCount = rows
+          .map((row) => _headerIndex(row).length)
+          .fold(0, (best, count) => count > best ? count : best);
+      if (headerCount > bestHeaderCount) {
+        bestRows = rows;
+        bestHeaderCount = headerCount;
+      }
+    }
+
+    return bestRows ?? const [];
+  }
+
+  static List<List<String>> _worksheetRows(
+    XmlDocument document,
+    List<String> sharedStrings,
+  ) {
+    return _elementsWithLocalName(document, 'row').map((row) {
       final cells = <String>[];
-      for (final cell in row.findElements('c')) {
+      var nextColumn = 0;
+      for (final cell in _childrenWithLocalName(row, 'c')) {
         final reference = cell.getAttribute('r') ?? '';
-        final column = _columnIndex(reference);
+        final column = reference.isEmpty
+            ? nextColumn
+            : _columnIndex(reference);
         while (cells.length <= column) {
           cells.add('');
         }
 
         final type = cell.getAttribute('t');
-        final value = cell.getElement('v')?.innerText ?? '';
-        cells[column] = type == 's'
-            ? (int.tryParse(value) != null &&
-                      int.parse(value) < sharedStrings.length
-                  ? sharedStrings[int.parse(value)]
-                  : value)
-            : type == 'inlineStr'
-            ? cell.getElement('is')?.innerText ?? ''
-            : value;
+        final value = _childWithLocalName(cell, 'v')?.innerText ?? '';
+        cells[column] = _excelCellValue(
+          cell,
+          type: type,
+          value: value,
+          sharedStrings: sharedStrings,
+        );
+        nextColumn = column + 1;
       }
       return cells;
     }).toList();
   }
 
+  static String _excelCellValue(
+    XmlElement cell, {
+    required String? type,
+    required String value,
+    required List<String> sharedStrings,
+  }) {
+    if (type == 's') {
+      final index = int.tryParse(value);
+      if (index != null && index >= 0 && index < sharedStrings.length) {
+        return sharedStrings[index];
+      }
+    }
+    if (type == 'inlineStr') {
+      return _childWithLocalName(cell, 'is')?.innerText ?? '';
+    }
+    return value;
+  }
+
+  static bool _looksLikeZip(Uint8List bytes) {
+    return bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4b;
+  }
+
   static List<String> _sharedStrings(XmlDocument document) {
-    return document.findAllElements('si').map((item) {
-      return item.findAllElements('t').map((text) => text.innerText).join();
+    return _elementsWithLocalName(document, 'si').map((item) {
+      return _elementsWithLocalName(item, 't')
+          .map((text) => text.innerText)
+          .join();
     }).toList();
+  }
+
+  static Iterable<XmlElement> _elementsWithLocalName(
+    XmlNode node,
+    String localName,
+  ) {
+    return node.descendants.whereType<XmlElement>().where(
+      (element) => element.localName == localName,
+    );
+  }
+
+  static Iterable<XmlElement> _childrenWithLocalName(
+    XmlNode node,
+    String localName,
+  ) {
+    return node.children.whereType<XmlElement>().where(
+      (element) => element.localName == localName,
+    );
+  }
+
+  static XmlElement? _childWithLocalName(XmlNode node, String localName) {
+    for (final child in _childrenWithLocalName(node, localName)) {
+      return child;
+    }
+    return null;
   }
 
   static int _columnIndex(String reference) {
@@ -192,13 +336,73 @@ class VehicleListImporter {
       final key = _normalizeHeader(headerCells[i]);
       if (key.isEmpty) continue;
       for (final entry in _headerAliases.entries) {
-        if (entry.value.contains(key)) {
-          result[entry.key] = i;
+        if (entry.value.contains(key) || _matchesHeaderAlias(key, entry.key)) {
+          // Prefer the first matching column when a workbook has both a
+          // current price and a separate sold/auction price column.
+          result.putIfAbsent(entry.key, () => i);
           break;
         }
       }
     }
     return result;
+  }
+
+  static bool _matchesHeaderAlias(String key, String field) {
+    switch (field) {
+      case 'number':
+        return key == 'vehicle number' ||
+            key == 'vehicle no' ||
+            key == 'auction no' ||
+            key == 'auction number' ||
+            ((key.contains('serial') || key.contains('lot')) &&
+                (key.contains('no') || key.contains('number')));
+      case 'vin':
+        return key == 'vin number' ||
+            key.contains('vehicle identification') ||
+            key.contains('chassis') ||
+            key == 'stock number' ||
+            key == 'stock no' ||
+            key == 'stock';
+      case 'title':
+        return key == 'description' ||
+            key == 'vehicle description' ||
+            key == 'vehicle details';
+      case 'price':
+        return key == 'sale price' ||
+            key == 'auction price' ||
+            key == 'price sold' ||
+            key.contains('price');
+      case 'color':
+        return key == 'body color' ||
+            key == 'body colour' ||
+            key == 'vehicle color' ||
+            key == 'vehicle colour' ||
+            key.contains('color') ||
+            key.contains('colour');
+      case 'model':
+        return key.contains('year') ||
+            key == 'make and model' ||
+            key == 'make model';
+      default:
+        return false;
+    }
+  }
+
+  static int? _findHeaderRow(List<List<String>> rows) {
+    int? bestIndex;
+    var bestMatchCount = 0;
+
+    for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      final matchCount = _headerIndex(
+        rows[rowIndex].map(_clean).toList(),
+      ).length;
+      if (matchCount > bestMatchCount) {
+        bestIndex = rowIndex;
+        bestMatchCount = matchCount;
+      }
+    }
+
+    return bestIndex;
   }
 
   static String _cellValue(List<dynamic> row, int? index) {
