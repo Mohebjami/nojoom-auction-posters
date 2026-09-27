@@ -179,6 +179,16 @@ class PosterHistory {
     });
   }
 
+  Future<void> deleteMany(Iterable<int> ids) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      for (final id in ids) {
+        await _entries.record(id).delete(txn);
+        await _photos.record(id).delete(txn);
+      }
+    });
+  }
+
   /// Saves a vehicle in the separate auction-list workspace.
   ///
   /// Auction data deliberately has its own store so poster drafts keep their

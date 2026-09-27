@@ -67,6 +67,12 @@ class VehicleListImporter {
       'make model',
       'make and model',
     },
+    'brand': {
+      'brand',
+      'vehicle brand',
+      'manufacturer',
+      'make',
+    },
     'price': {
       'price',
       'price usd',
@@ -122,8 +128,11 @@ class VehicleListImporter {
 
       final vehicle = VehicleDetails(
         number: _cellValue(row, indexMap['number']),
-        title: _cellValue(row, indexMap['title']),
-        model: _cellValue(row, indexMap['model']),
+        title: _combineBrandAndTitle(
+          _cellValue(row, indexMap['brand']),
+          _cellValue(row, indexMap['model']),
+        ),
+        model: _cellValue(row, indexMap['title']),
         price: _cellValue(row, indexMap['price']),
         color: _cellValue(row, indexMap['color']),
         vin: _cellValue(row, indexMap['vin']),
@@ -142,6 +151,13 @@ class VehicleListImporter {
     }
 
     return results;
+  }
+
+  static String _combineBrandAndTitle(String brand, String title) {
+    final parts = [brand.trim(), title.trim()]
+        .where((part) => part.isNotEmpty)
+        .toList();
+    return parts.join(' ');
   }
 
   static List<List<String>> _excelRows(Uint8List bytes) {

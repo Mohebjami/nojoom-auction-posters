@@ -388,6 +388,16 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
+  void _movePhoto(int from, int to) {
+    if (_busy || from == to) return;
+    setState(() {
+      final photo = _photos[from];
+      _photos[from] = _photos[to];
+      _photos[to] = photo;
+      _dirty = true;
+    });
+  }
+
   String _value(String key) {
     return _controllers[key]?.text.trim() ?? '';
   }
@@ -821,7 +831,7 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget _photoCard(int index) {
     final photo = _photos[index];
     final accent = Theme.of(context).colorScheme.primary;
-    return Semantics(
+    final card = Semantics(
       label:
           '${_photoLabels[index]}, ${photo == null ? 'add photo' : 'replace photo'}',
       child: Material(
@@ -905,6 +915,30 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+    return DragTarget<int>(
+      onAcceptWithDetails: (details) => _movePhoto(details.data, index),
+      builder: (context, candidates, rejected) => LongPressDraggable<int>(
+        data: index,
+        maxSimultaneousDrags: _busy ? 0 : 1,
+        feedback: Material(
+          elevation: 8,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(width: 150, height: 150, child: card),
+        ),
+        childWhenDragging: Opacity(opacity: .35, child: card),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: candidates.isNotEmpty
+                ? Border.all(color: accent, width: 3)
+                : null,
+          ),
+          child: card,
         ),
       ),
     );
@@ -1370,7 +1404,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
 
     final file = File(
-      '${directory.path}/vehicle-$_safeNumber-$timestamp.$extension',
+      '${directory.path}/$_safeNumber-$timestamp.$extension',
     );
 
     await file.writeAsBytes(bytes, flush: true);
@@ -1460,7 +1494,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     String extension,
     String mimeType,
   ) async {
-    final name = 'vehicle-$_safeNumber.$extension';
+    final name = '$_safeNumber.$extension';
     final file = kIsWeb
         ? XFile.fromData(bytes, mimeType: mimeType, name: name)
         : XFile(
@@ -1496,8 +1530,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
       if (_usesGallery) await ensureGalleryAccess();
       if (!mounted) return;
       final bytes = await compute(encodePosterJpg, await _capturePng());
-      final name =
-          'vehicle-$_safeNumber-${DateTime.now().microsecondsSinceEpoch}.jpg';
+      final name = '$_safeNumber-${DateTime.now().microsecondsSinceEpoch}.jpg';
       String message;
       if (_usesGallery) {
         await saveJpgToGallery(bytes, name);

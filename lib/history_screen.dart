@@ -131,6 +131,43 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  Future<void> _deleteDateFolder(
+    String dateKey,
+    List<PosterHistoryEntry> entries,
+  ) async {
+    final date = MaterialLocalizations.of(
+      context,
+    ).formatMediumDate(entries.first.updatedAt.toLocal());
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StudioConfirmDialog(
+        title: 'Delete folder contents?',
+        message:
+            'Delete all ${entries.length} saved poster${entries.length == 1 ? '' : 's'} in $date? This also removes their saved photos.',
+        cancelLabel: 'Cancel',
+        confirmLabel: 'Delete all',
+        icon: Icons.delete_sweep_outlined,
+        confirmIcon: Icons.delete_sweep_outlined,
+        destructive: true,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await widget.history.deleteMany(entries.map((entry) => entry.id));
+      if (!mounted) return;
+      setState(() {
+        _openedDateFolders.remove(dateKey);
+        _thumbnails.clear();
+        _entries = widget.history.list();
+      });
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Widget _stat(
     String value,
     String label,
@@ -602,7 +639,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     color: StudioColors.muted,
                   ),
                 ),
-                const SizedBox(width: 6),
+                IconButton(
+                  tooltip: 'Delete all posters in $date',
+                  onPressed: _busy
+                      ? null
+                      : () => _deleteDateFolder(key, entries),
+                  icon: const Icon(Icons.delete_sweep_outlined),
+                ),
                 Icon(
                   opened
                       ? Icons.expand_less_rounded
