@@ -74,6 +74,7 @@ flutter:
     - assets/glyphs.json
     - assets/preview.html
     - assets/templates/clean.svg
+    - assets/vehicles_label.svg
 
   # To add assets to your application, add an assets section, like this:
   # assets:

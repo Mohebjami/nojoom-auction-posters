@@ -78,6 +78,7 @@ class StudioShell extends StatelessWidget {
     this.onEditor,
     this.onHistory,
     this.onAuctionVehicles,
+    this.onVehiclesLabel,
     this.onNew,
     this.busy = false,
   });
@@ -88,6 +89,7 @@ class StudioShell extends StatelessWidget {
   final VoidCallback? onEditor;
   final VoidCallback? onHistory;
   final VoidCallback? onAuctionVehicles;
+  final VoidCallback? onVehiclesLabel;
   final VoidCallback? onNew;
   final bool busy;
 
@@ -237,6 +239,13 @@ class StudioShell extends StatelessWidget {
                               'Auction List',
                               Icons.gavel_outlined,
                               onAuctionVehicles,
+                            ),
+                          if (onVehiclesLabel != null ||
+                              section == 'Vehicles Label')
+                            _nav(
+                              'Vehicles Label',
+                              Icons.sell_outlined,
+                              onVehiclesLabel,
                             ),
                           if (onHistory != null || section == 'History')
                             _nav('History', Icons.history_rounded, onHistory),
@@ -420,6 +429,15 @@ class StudioShell extends StatelessWidget {
                                       size: 21,
                                     ),
                                   ),
+                                if (!desktop && onVehiclesLabel != null)
+                                  IconButton(
+                                    tooltip: 'Vehicles Label',
+                                    onPressed: busy ? null : onVehiclesLabel,
+                                    icon: const Icon(
+                                      Icons.sell_outlined,
+                                      size: 21,
+                                    ),
+                                  ),
                                 if (desktop)
                                   const StudioBadge(
                                     label: 'VEHICLE STUDIO',
@@ -436,7 +454,7 @@ class StudioShell extends StatelessWidget {
                   ),
                 ],
               ),
-            );
+                            );
           },
         ),
       ),

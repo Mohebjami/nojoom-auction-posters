@@ -20,6 +20,7 @@ import 'gallery_export.dart';
 import 'studio_ui.dart';
 import 'custom_template.dart';
 import 'vehicle_import.dart';
+import 'vehicles_label_screen.dart';
 
 Set<String> _vehicleIdentityKeys(VehicleDetails vehicle) {
   final keys = <String>{};
@@ -49,7 +50,7 @@ class VehiclePosterApp extends StatelessWidget {
   }
 }
 
-enum _WorkspaceTab { create, auction, history }
+enum _WorkspaceTab { create, auction, labels, history }
 
 class WorkspaceScreen extends StatefulWidget {
   final PosterHistory? history;
@@ -66,6 +67,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   late final PosterHistory _history;
   late final Widget _editorPage;
   late final Widget _auctionPage;
+  late Widget _labelsPage;
   late final Widget _historyPage;
   var _active = _WorkspaceTab.create;
   var _visitedAuction = false;
@@ -83,6 +85,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       onShowAuctionVehicles: () => _showTab(_WorkspaceTab.auction),
     );
     _auctionPage = AuctionVehiclesScreen(history: _history, embedded: true);
+    _labelsPage = VehiclesLabelScreen(history: _history);
     _historyPage = HistoryScreen(
       history: _history,
       embedded: true,
@@ -101,18 +104,28 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   String get _section => switch (_active) {
     _WorkspaceTab.create => 'Create',
     _WorkspaceTab.auction => 'Auction List',
+    _WorkspaceTab.labels => 'Vehicles Label',
     _WorkspaceTab.history => 'History',
   };
 
   void _showTab(_WorkspaceTab tab) {
     if (!mounted) return;
     if (tab == _WorkspaceTab.auction) _visitedAuction = true;
+    if (tab == _WorkspaceTab.labels) _visitedAuction = true;
     if (tab == _WorkspaceTab.history) _visitedHistory = true;
     if (tab == _WorkspaceTab.history) {
       _historyRefresh.value++;
     }
-    if (_active == tab) return;
-    setState(() => _active = tab);
+    if (_active == tab && tab != _WorkspaceTab.labels) return;
+    setState(() {
+      _active = tab;
+      if (tab == _WorkspaceTab.labels) {
+        _labelsPage = VehiclesLabelScreen(
+          key: UniqueKey(),
+          history: _history,
+        );
+      }
+    });
     if (tab == _WorkspaceTab.create) {
       _editorKey.currentState?._verifyCurrentDraftStillExists();
     }
@@ -141,6 +154,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     section: _section,
     onEditor: () => _selectTab(_WorkspaceTab.create),
     onAuctionVehicles: () => _selectTab(_WorkspaceTab.auction),
+    onVehiclesLabel: () => _selectTab(_WorkspaceTab.labels),
     onHistory: () => _selectTab(_WorkspaceTab.history),
     onNew: _active == _WorkspaceTab.create
         ? () => _editorKey.currentState?._newPoster()
@@ -150,6 +164,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       children: [
         _editorPage,
         _visitedAuction ? _auctionPage : const SizedBox.expand(),
+        _visitedAuction ? _labelsPage : const SizedBox.expand(),
         _visitedHistory ? _historyPage : const SizedBox.expand(),
       ],
     ),
