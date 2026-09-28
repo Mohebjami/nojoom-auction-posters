@@ -32,9 +32,9 @@
       <text x="1007" y="132">نوع موتر</text><text x="1007" y="189">شاسی</text><text x="1007" y="246">قیمت</text><text x="1007" y="303">رنگ</text><text x="1007" y="360">مدل</text>
     </g>
     <g fill="#171813" font-size="25" font-weight="600" direction="rtl" unicode-bidi="embed" text-anchor="start">
-      <text id="field-title" x="849" y="132" direction="ltr" text-anchor="end">پریوس</text>
+      <text id="field-title" x="849" y="132" direction="rtl" unicode-bidi="embed" text-anchor="start">پریوس</text>
       <text id="field-vin" x="849" y="189" font-size="24" letter-spacing="1" direction="ltr" text-anchor="end">JTDKN3DU2A0158754</text>
-      <text id="field-price" x="849" y="246" font-family="Georgia, 'Times New Roman', serif" font-size="36" font-weight="800" direction="ltr" text-anchor="end">6,500 USD</text>
+      <text id="field-price" x="849" y="253" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="800" direction="ltr" text-anchor="end">6,500 USD</text>
       <text id="field-color" x="849" y="303" direction="ltr" text-anchor="end">نقره‌ای</text>
       <text id="field-year" x="849" y="360" direction="ltr" text-anchor="end">2010</text>
     </g>

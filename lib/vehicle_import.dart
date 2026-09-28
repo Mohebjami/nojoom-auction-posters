@@ -121,6 +121,7 @@ class VehicleListImporter {
 
     final headerRow = data[headerIndex].map((cell) => _clean(cell)).toList();
     final indexMap = _headerIndex(headerRow);
+    final vehicleTypeIndex = _vehicleTypeColumnIndex(headerRow);
     final results = <VehicleDetails>[];
 
     for (final row in data.skip(headerIndex + 1)) {
@@ -128,11 +129,12 @@ class VehicleListImporter {
 
       final vehicle = VehicleDetails(
         number: _cellValue(row, indexMap['number']),
-        title: _combineBrandAndTitle(
-          _cellValue(row, indexMap['brand']),
-          _cellValue(row, indexMap['model']),
+        title: _posterModelValue(
+          row,
+          headerRow,
+          vehicleTypeIndex: vehicleTypeIndex,
         ),
-        model: _cellValue(row, indexMap['title']),
+        model: _normalizeVehicleType(_cellValue(row, vehicleTypeIndex)),
         price: _cellValue(row, indexMap['price']),
         color: _cellValue(row, indexMap['color']),
         vin: _cellValue(row, indexMap['vin']),
@@ -153,11 +155,112 @@ class VehicleListImporter {
     return results;
   }
 
-  static String _combineBrandAndTitle(String brand, String title) {
-    final parts = [brand.trim(), title.trim()]
-        .where((part) => part.isNotEmpty)
-        .toList();
-    return parts.join(' ');
+  static String _normalizeVehicleType(String value) {
+    var normalized = value;
+
+    normalized = normalized.replaceAll(
+      RegExp(r'\b(?:Priuc|Prius)\s+C\b', caseSensitive: false),
+      'پرویوس C',
+    );
+    normalized = normalized.replaceAll(
+      RegExp(r'\b(?:Priuc|Prius)\b', caseSensitive: false),
+      'پرویوس',
+    );
+    normalized = normalized.replaceAll(
+      RegExp(r'\b(?:Crolla|Corolla)\b', caseSensitive: false),
+      'کرولا',
+    );
+    normalized = normalized.replaceAll(
+      RegExp(r'\b4Runner\b', caseSensitive: false),
+      'فوررنر',
+    );
+    normalized = normalized.replaceAll(
+      RegExp(r'\bLexus\b', caseSensitive: false),
+      'لکسوس',
+    );
+    normalized = normalized.replaceAll(
+      RegExp(r'\bLimited\b', caseSensitive: false),
+      'لمیتد',
+    );
+
+    // The make/year columns should not be appended to the vehicle type.
+    normalized = normalized.replaceAll(
+      RegExp(r'\b(?:Toyota|Toytoa)\b', caseSensitive: false),
+      '',
+    );
+
+    // The year belongs in its own spreadsheet column, not the vehicle type.
+    normalized = normalized.replaceAll(RegExp(r'\b(?:19|20)\d{2}\b'), '');
+    normalized = normalized
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'^[,;/|–—-]+|[,;/|–—-]+$'), '')
+        .trim();
+    return normalized;
+  }
+
+  static int? _vehicleTypeColumnIndex(List<String> headers) {
+    // Prefer an explicitly named Vehicle Type column over generic columns
+    // such as Vehicle or Description.
+    for (var i = 0; i < headers.length; i++) {
+      if (_normalizeHeader(headers[i]) == 'vehicle type') return i;
+    }
+
+    // A Model column belongs only in the poster's Model field. If there is
+    // no vehicle-type column, leave the Vehicle Type field empty.
+    final typeHeaders = _headerAliases['title']!;
+    for (var i = 0; i < headers.length; i++) {
+      if (typeHeaders.contains(_normalizeHeader(headers[i]))) return i;
+    }
+    return null;
+  }
+
+  static int? _explicitModelColumnIndex(List<String> headers) {
+    const modelHeaders = {
+      'model',
+      'model name',
+      'vehicle model',
+      'vehicle model name',
+      'make model',
+      'make and model',
+    };
+    for (var i = 0; i < headers.length; i++) {
+      if (modelHeaders.contains(_normalizeHeader(headers[i]))) return i;
+    }
+    return null;
+  }
+
+  static String _posterModelValue(
+    List<String> row,
+    List<String> headers, {
+    required int? vehicleTypeIndex,
+  }) {
+    final explicitModelIndex = _explicitModelColumnIndex(headers);
+    if (explicitModelIndex != null && explicitModelIndex != vehicleTypeIndex) {
+      final model = _cellValue(row, explicitModelIndex);
+      if (model.isNotEmpty) return model;
+    }
+
+    final brandIndex = _firstHeaderIndex(headers, _headerAliases['brand']!);
+    final yearIndex = _firstHeaderIndex(headers, const {
+      'year',
+      'model year',
+      'manufacture year',
+    });
+    final brand = _cellValue(row, brandIndex);
+    var year = _cellValue(row, yearIndex);
+    if (year.isEmpty && vehicleTypeIndex != null) {
+      final type = _cellValue(row, vehicleTypeIndex);
+      year = RegExp(r'\b(?:19|20)\d{2}\b').firstMatch(type)?.group(0) ?? '';
+    }
+
+    return [brand, year].where((part) => part.isNotEmpty).join(' ');
+  }
+
+  static int? _firstHeaderIndex(List<String> headers, Set<String> aliases) {
+    for (var i = 0; i < headers.length; i++) {
+      if (aliases.contains(_normalizeHeader(headers[i]))) return i;
+    }
+    return null;
   }
 
   static List<List<String>> _excelRows(Uint8List bytes) {

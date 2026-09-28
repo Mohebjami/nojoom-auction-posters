@@ -205,8 +205,12 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
         : _yearPattern.firstMatch(vehicle.vehicleType)?.group(0) ?? '';
     final updated = await showDialog<AuctionVehicle>(
       context: context,
-      builder: (context) =>
-          _VehicleLabelEditDialog(initial: vehicle.copyWith(year: year)),
+      builder: (context) => _VehicleLabelEditDialog(
+        initial: vehicle.copyWith(
+          vehicleType: _vehicleType(vehicle.vehicleType),
+          year: year,
+        ),
+      ),
     );
     if (updated == null || !mounted) return;
 
@@ -258,6 +262,18 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
     }
   }
 
+  String _vehicleType(String input) {
+    return input
+        .replaceAll(_yearPattern, '')
+        .replaceAll(RegExp(r'\blexus\b', caseSensitive: false), 'لکسوس')
+        .replaceAll(
+          RegExp(r'\b(?:toyota\s+)?prius\b', caseSensitive: false),
+          'پریوس',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
   String _svg(AuctionVehicle vehicle, String source) {
     final doc = XmlDocument.parse(source);
     final sourceType = vehicle.vehicleType;
@@ -265,7 +281,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
         ? vehicle.year.trim()
         : _yearPattern.firstMatch(sourceType)?.group(0) ?? '';
     final values = {
-      'field-title': sourceType,
+      'field-title': _vehicleType(sourceType),
       'field-vin': vehicle.vin,
       'field-price': vehicle.priceUsd,
       'field-color': _persianColor(vehicle.color),
@@ -358,7 +374,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
     const gold = Color(0xffbd9136);
     const paper = Color(0xfffffdf7);
     final rows = <(String, String)>[
-      ('نوع موتر', vehicle.vehicleType),
+      ('نوع موتر', _vehicleType(vehicle.vehicleType)),
       ('شاسی', vehicle.vin),
       ('قیمت', vehicle.priceUsd),
       ('رنگ', _persianColor(vehicle.color)),
@@ -449,13 +465,16 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                             Expanded(
                               child: Text(
                                 rows[index].$2,
+                                textDirection: index == 0
+                                    ? TextDirection.rtl
+                                    : null,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: const Color(0xff171813),
-                                  fontFamily: index == 2 ? 'Georgia' : null,
-                                  fontSize: index == 2 ? 7 : 5.8,
+                                  fontFamily: index == 2 ? 'Arial' : null,
+                                  fontSize: index == 2 ? 9 : 5.8,
                                   fontWeight: index == 2
                                       ? FontWeight.w800
                                       : FontWeight.w600,
@@ -613,7 +632,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'No. ${vehicle.number}  ·  ${vehicle.vehicleType}',
+                                  'No. ${vehicle.number}  ·  ${_vehicleType(vehicle.vehicleType)}',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                   ),

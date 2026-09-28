@@ -1034,8 +1034,8 @@ class _EditorScreenState extends State<EditorScreen> {
     'Add the details you want to show on your poster.',
     Column(
       children: [
-        _field('title', 'Title', '2010 TOYOTA'),
-        _field('model', 'Model', 'COROLLA'),
+        _field('title', 'Model', '2010 TOYOTA'),
+        _field('model', 'Vehicle Type', 'COROLLA'),
         Row(
           children: [
             Expanded(
