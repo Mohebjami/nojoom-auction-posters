@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import 'auction_vehicle.dart';
 import 'poster.dart';
 import 'poster_history.dart';
 import 'studio_ui.dart';
+import 'vehicle_number_sort.dart';
 
 class _VehicleLabelEntry {
   final int id;
@@ -65,6 +67,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
   late Future<List<_VehicleLabelEntry>> _entries;
   Future<String>? _template;
   bool _busy = false;
+  bool _numberAscending = true;
 
   @override
   void initState() {
@@ -83,10 +86,21 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
           vehicle: AuctionVehicle(
             number: entry.vehicle.number,
             vin: entry.vehicle.vin,
-            vehicleType: [
-              entry.vehicle.title,
-              entry.vehicle.model,
-            ].where((value) => value.trim().isNotEmpty).join(' '),
+            // Posters store brand/year in title and vehicle type in model.
+            // Older label edits stored these fields in the opposite order.
+            vehicleType:
+                _yearPattern.hasMatch(entry.vehicle.model) &&
+                    entry.vehicle.model
+                        .replaceAll(_yearPattern, '')
+                        .trim()
+                        .isEmpty
+                ? entry.vehicle.title
+                : entry.vehicle.model,
+            year:
+                _yearPattern
+                    .firstMatch('${entry.vehicle.title} ${entry.vehicle.model}')
+                    ?.group(0) ??
+                '',
             color: entry.vehicle.color,
             priceUsd: entry.vehicle.price,
           ),
@@ -233,8 +247,8 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
         await widget.history.save(
           VehicleDetails(
             number: updated.number,
-            title: updated.vehicleType,
-            model: updated.year,
+            title: updated.year,
+            model: updated.vehicleType,
             price: updated.priceUsd,
             color: updated.color,
             vin: updated.vin,
@@ -505,27 +519,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
       );
       final name =
           'vehicle_label_${safeNumber.isEmpty ? 'vehicle' : safeNumber}.svg';
-      if (kIsWeb) {
-        final location = await getSaveLocation(suggestedName: name);
-        if (location != null) {
-          final file = XFile.fromData(
-            utf8.encode(data),
-            mimeType: 'image/svg+xml',
-            name: name,
-          );
-          await file.saveTo(location.path);
-        }
-      } else if (Platform.isAndroid || Platform.isIOS) {
-        final dir = await getTemporaryDirectory();
-        final file = File('${dir.path}/$name');
-        await file.writeAsString(data);
-        await SharePlus.instance.share(
-          ShareParams(files: [XFile(file.path)], subject: name),
-        );
-      } else {
-        final location = await getSaveLocation(suggestedName: name);
-        if (location != null) await File(location.path).writeAsString(data);
-      }
+      await _saveExport(utf8.encode(data), name, 'image/svg+xml');
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -537,11 +531,89 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
     }
   }
 
+  Future<void> _saveExport(
+    List<int> bytes,
+    String name,
+    String mimeType,
+  ) async {
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$name');
+      await file.writeAsBytes(bytes);
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: mimeType)],
+          subject: name,
+          sharePositionOrigin: box == null
+              ? null
+              : box.localToGlobal(Offset.zero) & box.size,
+        ),
+      );
+    } else {
+      final location = await getSaveLocation(suggestedName: name);
+      if (location == null) return;
+      await XFile.fromData(
+        Uint8List.fromList(bytes),
+        mimeType: mimeType,
+        name: name,
+      ).saveTo(location.path);
+    }
+  }
+
+  Future<void> _exportAll(List<_VehicleLabelEntry> entries) async {
+    if (_busy || entries.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final template = await _loadTemplate();
+      final archive = Archive();
+      for (var index = 0; index < entries.length; index++) {
+        final vehicle = entries[index].vehicle;
+        final safeNumber = vehicle.number.trim().replaceAll(
+          RegExp(r'[^A-Za-z0-9_-]'),
+          '_',
+        );
+        archive.add(
+          ArchiveFile.string(
+            'vehicle_label_${index + 1}_${safeNumber.isEmpty ? 'vehicle' : safeNumber}.svg',
+            _svg(vehicle, template),
+          ),
+        );
+      }
+      await _saveExport(
+        ZipEncoder().encodeBytes(archive),
+        'vehicle_labels.zip',
+        'application/zip',
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not export labels: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<List<_VehicleLabelEntry>>(
     future: _entries,
     builder: (context, snapshot) {
-      final entries = snapshot.data ?? const <_VehicleLabelEntry>[];
+      final entries = [...?snapshot.data];
+      entries.sort((a, b) {
+        final comparison = compareVehicleNumbers(
+          a.vehicle.number,
+          b.vehicle.number,
+          ascending: _numberAscending,
+        );
+        if (comparison != 0) return comparison;
+        final sourceComparison = (a.isAuctionVehicle ? 1 : 0).compareTo(
+          b.isAuctionVehicle ? 1 : 0,
+        );
+        return sourceComparison != 0 ? sourceComparison : a.id.compareTo(b.id);
+      });
       final canShowEntries =
           !snapshot.hasError &&
           snapshot.connectionState == ConnectionState.done &&
@@ -567,16 +639,53 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                         if (canShowEntries)
                           Align(
                             alignment: Alignment.centerRight,
-                            child: OutlinedButton.icon(
-                              onPressed: _busy ? null : _deleteAllLabels,
-                              icon: const Icon(Icons.delete_sweep_outlined),
-                              label: const Text('Delete all'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xffac5639),
-                                side: const BorderSide(
-                                  color: Color(0xffac5639),
+                            child: Wrap(
+                              spacing: 12,
+                              runSpacing: 8,
+                              children: [
+                                DropdownButtonHideUnderline(
+                                  child: DropdownButton<bool>(
+                                    value: _numberAscending,
+                                    items: const [
+                                      DropdownMenuItem(
+                                        value: true,
+                                        child: Text('No.: low to high'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: false,
+                                        child: Text('No.: high to low'),
+                                      ),
+                                    ],
+                                    onChanged: _busy
+                                        ? null
+                                        : (value) {
+                                            if (value != null) {
+                                              setState(
+                                                () => _numberAscending = value,
+                                              );
+                                            }
+                                          },
+                                  ),
                                 ),
-                              ),
+                                FilledButton.icon(
+                                  onPressed: _busy
+                                      ? null
+                                      : () => _exportAll(entries),
+                                  icon: const Icon(Icons.download_outlined),
+                                  label: const Text('Export all labels (ZIP)'),
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed: _busy ? null : _deleteAllLabels,
+                                  icon: const Icon(Icons.delete_sweep_outlined),
+                                  label: const Text('Delete all'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xffac5639),
+                                    side: const BorderSide(
+                                      color: Color(0xffac5639),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                       ],
