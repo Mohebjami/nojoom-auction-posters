@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'auction_vehicles_screen.dart';
+import 'batch_posters_screen.dart';
 import 'poster_history.dart';
 import 'studio_ui.dart';
 import 'vehicle_number_sort.dart';
@@ -99,6 +100,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('$error')));
+  }
+
+  Future<void> _generatePosters(List<PosterHistoryEntry> entries) async {
+    if (_busy || entries.isEmpty) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            BatchPostersScreen(history: widget.history, entries: entries),
+      ),
+    );
   }
 
   Future<void> _delete(PosterHistoryEntry entry) async {
@@ -896,6 +908,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ),
                         const SizedBox(height: 14),
                         _toolbar(wide),
+                        const SizedBox(height: 14),
+                        OutlinedButton.icon(
+                          key: const ValueKey('history-generate-posters'),
+                          onPressed: _busy || filtered.isEmpty
+                              ? null
+                              : () => _generatePosters(filtered),
+                          icon: const Icon(
+                            Icons.collections_outlined,
+                            size: 18,
+                          ),
+                          label: const Text('Generate posters · JPG / PDF'),
+                        ),
                         if (_busy)
                           const Padding(
                             padding: EdgeInsets.only(top: 10),

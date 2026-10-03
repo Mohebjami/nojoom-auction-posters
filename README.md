@@ -9,6 +9,7 @@ A Flutter app for creating polished vehicle sale posters from up to four photos 
 - Responsive editor with a two-column desktop layout and a scrollable mobile layout.
 - Persistent local history for saving drafts, reopening posters, editing entries, and deleting projects.
 - JPG export at 1621 × 1987 pixels, plus PNG and self-contained SVG export.
+- Batch generation of saved vehicles as separate JPGs in a ZIP, or a single PDF with one complete poster per page.
 - Native gallery saving and sharing on supported platforms, with browser downloads on the web.
 
 ## Requirements
@@ -39,6 +40,16 @@ flutter run -d <device-id>
 3. Select **Generate poster** to preview and save the current project to History, or select **Save draft** to save without opening the preview.
 4. Export the result as JPG, PNG, or SVG. On macOS, JPG export opens a save dialog; on the web, it downloads the file.
 5. Open **History** to reopen and edit an existing project. Use **New poster** to start a separate project.
+
+To generate a whole collection, add photos to each vehicle and **Save draft** (or
+**Save changes**). Choose **Generate all posters** in Create, or **Generate
+posters · JPG / PDF** in History. Select the vehicles to include, then choose
+**Separate JPGs (ZIP)** or **Create PDF**. Opening batch generation from Create
+saves any current edits first. History uses the current search, filter, and sort
+order; Create lists all saved vehicles by number. Each poster retains its own
+saved details, photos, and template. Photos remain optional. Generation shows
+progress and can be cancelled before saving. Desktop opens a save dialog, web
+downloads the file, and mobile opens the share sheet.
 
 History is stored locally on the device, or in the browser profile and site address on the web. There is no account or cross-device synchronization. Uninstalling the app or clearing browser storage removes local history.
 

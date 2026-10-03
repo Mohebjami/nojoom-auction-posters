@@ -57,8 +57,10 @@ class VehicleListImporter {
       'car',
       'type',
     },
+    'brandYear': {'brand and year', 'brand year', 'make and year', 'make year'},
     'model': {
       'model',
+      'model name',
       'year',
       'model year',
       'manufacture year',
@@ -67,12 +69,7 @@ class VehicleListImporter {
       'make model',
       'make and model',
     },
-    'brand': {
-      'brand',
-      'vehicle brand',
-      'manufacturer',
-      'make',
-    },
+    'brand': {'brand', 'vehicle brand', 'manufacturer', 'make'},
     'price': {
       'price',
       'price usd',
@@ -129,12 +126,12 @@ class VehicleListImporter {
 
       final vehicle = VehicleDetails(
         number: _cellValue(row, indexMap['number']),
-        title: _posterModelValue(
+        title: _posterBrandYearValue(
           row,
           headerRow,
           vehicleTypeIndex: vehicleTypeIndex,
         ),
-        model: _normalizeVehicleType(_cellValue(row, vehicleTypeIndex)),
+        model: _cellValue(row, vehicleTypeIndex),
         price: _cellValue(row, indexMap['price']),
         color: _cellValue(row, indexMap['color']),
         vin: _cellValue(row, indexMap['vin']),
@@ -155,63 +152,25 @@ class VehicleListImporter {
     return results;
   }
 
-  static String _normalizeVehicleType(String value) {
-    var normalized = value;
-
-    normalized = normalized.replaceAll(
-      RegExp(r'\b(?:Priuc|Prius)\s+C\b', caseSensitive: false),
-      'پرویوس C',
-    );
-    normalized = normalized.replaceAll(
-      RegExp(r'\b(?:Priuc|Prius)\b', caseSensitive: false),
-      'پرویوس',
-    );
-    normalized = normalized.replaceAll(
-      RegExp(r'\b(?:Crolla|Corolla)\b', caseSensitive: false),
-      'کرولا',
-    );
-    normalized = normalized.replaceAll(
-      RegExp(r'\b4Runner\b', caseSensitive: false),
-      'فوررنر',
-    );
-    normalized = normalized.replaceAll(
-      RegExp(r'\bLexus\b', caseSensitive: false),
-      'لکسوس',
-    );
-    normalized = normalized.replaceAll(
-      RegExp(r'\bLimited\b', caseSensitive: false),
-      'لمیتد',
-    );
-
-    // The make/year columns should not be appended to the vehicle type.
-    normalized = normalized.replaceAll(
-      RegExp(r'\b(?:Toyota|Toytoa)\b', caseSensitive: false),
-      '',
-    );
-
-    // The year belongs in its own spreadsheet column, not the vehicle type.
-    normalized = normalized.replaceAll(RegExp(r'\b(?:19|20)\d{2}\b'), '');
-    normalized = normalized
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .replaceAll(RegExp(r'^[,;/|–—-]+|[,;/|–—-]+$'), '')
-        .trim();
-    return normalized;
-  }
-
   static int? _vehicleTypeColumnIndex(List<String> headers) {
+    final modelIndex = _explicitModelColumnIndex(headers);
+    if (_firstHeaderIndex(headers, _headerAliases['brandYear']!) != null &&
+        modelIndex != null) {
+      return modelIndex;
+    }
+
     // Prefer an explicitly named Vehicle Type column over generic columns
     // such as Vehicle or Description.
     for (var i = 0; i < headers.length; i++) {
       if (_normalizeHeader(headers[i]) == 'vehicle type') return i;
     }
 
-    // A Model column belongs only in the poster's Model field. If there is
-    // no vehicle-type column, leave the Vehicle Type field empty.
+    // Legacy sheets use Vehicle Type for the model and Model for brand/year.
     final typeHeaders = _headerAliases['title']!;
     for (var i = 0; i < headers.length; i++) {
       if (typeHeaders.contains(_normalizeHeader(headers[i]))) return i;
     }
-    return null;
+    return modelIndex;
   }
 
   static int? _explicitModelColumnIndex(List<String> headers) {
@@ -229,11 +188,18 @@ class VehicleListImporter {
     return null;
   }
 
-  static String _posterModelValue(
+  static String _posterBrandYearValue(
     List<String> row,
     List<String> headers, {
     required int? vehicleTypeIndex,
   }) {
+    final combinedIndex = _firstHeaderIndex(
+      headers,
+      _headerAliases['brandYear']!,
+    );
+    final combined = _cellValue(row, combinedIndex);
+    if (combined.isNotEmpty) return combined;
+
     final explicitModelIndex = _explicitModelColumnIndex(headers);
     if (explicitModelIndex != null && explicitModelIndex != vehicleTypeIndex) {
       final model = _cellValue(row, explicitModelIndex);
@@ -273,8 +239,7 @@ class VehicleListImporter {
           );
     final worksheetFiles = archive.files.where(
       (file) =>
-          file.name.startsWith('xl/worksheets/') &&
-          file.name.endsWith('.xml'),
+          file.name.startsWith('xl/worksheets/') && file.name.endsWith('.xml'),
     );
     if (worksheetFiles.isEmpty) {
       throw const FormatException('The XLSX file has no worksheets.');
@@ -283,9 +248,7 @@ class VehicleListImporter {
     List<List<String>>? bestRows;
     var bestHeaderCount = 0;
     for (final sheetFile in worksheetFiles) {
-      final document = XmlDocument.parse(
-        utf8.decode(sheetFile.readBytes()!),
-      );
+      final document = XmlDocument.parse(utf8.decode(sheetFile.readBytes()!));
       final rows = _worksheetRows(document, sharedStrings);
       final headerCount = rows
           .map((row) => _headerIndex(row).length)
@@ -308,9 +271,7 @@ class VehicleListImporter {
       var nextColumn = 0;
       for (final cell in _childrenWithLocalName(row, 'c')) {
         final reference = cell.getAttribute('r') ?? '';
-        final column = reference.isEmpty
-            ? nextColumn
-            : _columnIndex(reference);
+        final column = reference.isEmpty ? nextColumn : _columnIndex(reference);
         while (cells.length <= column) {
           cells.add('');
         }
@@ -353,9 +314,10 @@ class VehicleListImporter {
 
   static List<String> _sharedStrings(XmlDocument document) {
     return _elementsWithLocalName(document, 'si').map((item) {
-      return _elementsWithLocalName(item, 't')
-          .map((text) => text.innerText)
-          .join();
+      return _elementsWithLocalName(
+        item,
+        't',
+      ).map((text) => text.innerText).join();
     }).toList();
   }
 

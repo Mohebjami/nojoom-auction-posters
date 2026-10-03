@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 abstract final class StudioColors {
-  static const ink = Color(0xff262724);
-  static const muted = Color(0xff777973);
-  static const accent = Color(0xffd96b49);
-  static const line = Color(0xffe4e5e0);
-  static const paper = Color(0xfff5f5f2);
+  static const ink = Color(0xff24332e);
+  static const muted = Color(0xff69756f);
+  static const accent = Color(0xffb85535);
+  static const line = Color(0xffe1e5df);
+  static const paper = Color(0xfff4f5f0);
 }
 
 ThemeData studioTheme() => ThemeData(
@@ -17,6 +17,21 @@ ThemeData studioTheme() => ThemeData(
     onPrimary: Colors.white,
     surface: StudioColors.paper,
     onSurface: StudioColors.ink,
+  ),
+  splashFactory: InkSparkle.splashFactory,
+  snackBarTheme: SnackBarThemeData(
+    behavior: SnackBarBehavior.floating,
+    backgroundColor: StudioColors.ink,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+  ),
+  progressIndicatorTheme: const ProgressIndicatorThemeData(
+    color: StudioColors.accent,
+    linearTrackColor: StudioColors.line,
+  ),
+  dialogTheme: DialogThemeData(
+    backgroundColor: Colors.white,
+    surfaceTintColor: Colors.transparent,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
   ),
   scaffoldBackgroundColor: StudioColors.paper,
   textTheme: ThemeData.light().textTheme.apply(
@@ -30,7 +45,7 @@ ThemeData studioTheme() => ThemeData(
   filledButtonTheme: FilledButtonThemeData(
     style: FilledButton.styleFrom(
       minimumSize: const Size(0, 48),
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       textStyle: const TextStyle(
         fontFamily: 'Roboto',
@@ -52,7 +67,7 @@ ThemeData studioTheme() => ThemeData(
   ),
   inputDecorationTheme: InputDecorationTheme(
     filled: true,
-    fillColor: const Color(0xfff6f6f3),
+    fillColor: const Color(0xfffafbf8),
     labelStyle: const TextStyle(color: StudioColors.muted, fontSize: 13),
     hintStyle: const TextStyle(color: Color(0xffa5a69f), fontSize: 13),
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
@@ -158,6 +173,89 @@ class StudioShell extends StatelessWidget {
     );
   }
 
+  List<(String, IconData, VoidCallback?)> get _destinations => [
+    ('Create', Icons.dashboard_outlined, onEditor),
+    if (onAuctionVehicles != null || section == 'Auction List')
+      ('Auction List', Icons.gavel_outlined, onAuctionVehicles),
+    if (onVehiclesLabel != null || section == 'Vehicles Label')
+      ('Vehicles Label', Icons.sell_outlined, onVehiclesLabel),
+    if (onHistory != null || section == 'History')
+      ('History', Icons.history_rounded, onHistory),
+  ];
+
+  Widget _mobileNavigation() => SafeArea(
+    top: false,
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: StudioColors.line)),
+      ),
+      child: Row(
+        children: [
+          for (final destination in _destinations)
+            Expanded(
+              child: Semantics(
+                selected: section == destination.$1,
+                child: Tooltip(
+                  message: destination.$1,
+                  child: InkWell(
+                    key: ValueKey(
+                      'studio-tab-${destination.$1.toLowerCase().replaceAll(' ', '-')}',
+                    ),
+                    onTap: busy ? null : destination.$3,
+                    borderRadius: BorderRadius.circular(14),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 10,
+                        horizontal: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: section == destination.$1
+                            ? const Color(0xfff6e8df)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            destination.$2,
+                            size: 21,
+                            color: section == destination.$1
+                                ? StudioColors.accent
+                                : StudioColors.muted,
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            switch (destination.$1) {
+                              'Auction List' => 'Vehicles',
+                              'Vehicles Label' => 'Labels',
+                              _ => destination.$1,
+                            },
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: section == destination.$1
+                                  ? StudioColors.accent
+                                  : StudioColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) => Scaffold(
     body: DecoratedBox(
@@ -165,7 +263,7 @@ class StudioShell extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xffd8d9d5), Color(0xffaeb0ab), Color(0xff797c77)],
+          colors: [Color(0xffe9ede5), Color(0xfff4efe7)],
         ),
       ),
       child: SafeArea(
@@ -174,163 +272,120 @@ class StudioShell extends StatelessWidget {
           builder: (context, constraints) {
             final desktop =
                 constraints.maxWidth >= 1000 && constraints.maxHeight >= 600;
-            final padding = desktop ? 28.0 : 10.0;
             return Padding(
-              padding: EdgeInsets.all(padding),
+              padding: EdgeInsets.all(desktop ? 20 : 0),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (desktop) ...[
                     Container(
-                      width: 180,
-                      padding: const EdgeInsets.all(14),
+                      width: 212,
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: .24),
-                        ),
+                        borderRadius: BorderRadius.circular(24),
                         gradient: const LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: [Color(0xff62655f), Color(0xff353832)],
+                          colors: [Color(0xff2d443a), Color(0xff1e3029)],
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: .12),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Padding(
-                            padding: EdgeInsets.fromLTRB(12, 14, 0, 32),
+                            padding: EdgeInsets.fromLTRB(10, 16, 0, 38),
                             child: Row(
                               children: [
                                 Icon(
                                   Icons.auto_awesome_mosaic_rounded,
-                                  color: Color(0xffefebe0),
-                                  size: 25,
+                                  color: Color(0xffe9bd8d),
+                                  size: 28,
                                 ),
-                                SizedBox(width: 10),
+                                SizedBox(width: 12),
                                 Expanded(
-                                  child: Text(
-                                    'poster\nstudio.',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 17,
-                                      height: .98,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: -.6,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'NOJOOM',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 2,
+                                          ),
+                                        ),
+                                        SizedBox(height: 4),
+                                        Text(
+                                          'POSTER STUDIO',
+                                          style: TextStyle(
+                                            color: Colors.white60,
+                                            fontSize: 9,
+                                            letterSpacing: 1.6,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          _nav('Create', Icons.dashboard_outlined, onEditor),
-                          if (onAuctionVehicles != null ||
-                              section == 'Auction List')
-                            _nav(
-                              'Auction List',
-                              Icons.gavel_outlined,
-                              onAuctionVehicles,
+                          const Padding(
+                            padding: EdgeInsets.fromLTRB(12, 0, 0, 14),
+                            child: Text(
+                              'WORKSPACE',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 10,
+                                letterSpacing: 1.5,
+                              ),
                             ),
-                          if (onVehiclesLabel != null ||
-                              section == 'Vehicles Label')
+                          ),
+                          for (final destination in _destinations)
                             _nav(
-                              'Vehicles Label',
-                              Icons.sell_outlined,
-                              onVehiclesLabel,
+                              destination.$1,
+                              destination.$2,
+                              destination.$3,
                             ),
-                          if (onHistory != null || section == 'History')
-                            _nav('History', Icons.history_rounded, onHistory),
                           if (section == 'Preview')
                             _nav('Preview', Icons.image_outlined, null),
                           const Spacer(),
-
-                          // Container(
-                          //   padding: const EdgeInsets.all(14),
-                          //   decoration: BoxDecoration(
-                          //     borderRadius: BorderRadius.circular(18),
-                          //     gradient: const LinearGradient(
-                          //       begin: Alignment.topLeft,
-                          //       end: Alignment.bottomRight,
-                          //       colors: [Color(0xff53564f), Color(0xff746054)],
-                          //     ),
-                          //     border: Border.all(color: Colors.white12),
-                          //   ),
-                          //   child: Column(
-                          //     crossAxisAlignment: CrossAxisAlignment.start,
-                          //     children: [
-                          //       const Icon(
-                          //         Icons.auto_awesome,
-                          //         size: 20,
-                          //         color: Color(0xffeaa184),
-                          //       ),
-                          //       const SizedBox(height: 12),
-                          //       const Text(
-                          //         'A better first\nimpression.',
-                          //         style: TextStyle(
-                          //           color: Colors.white,
-                          //           fontSize: 15,
-                          //           height: 1.2,
-                          //           fontWeight: FontWeight.w500,
-                          //         ),
-                          //       ),
-                          //       const SizedBox(height: 8),
-                          //       const Text(
-                          //         'Your vehicles.\nBeautifully presented.',
-                          //         style: TextStyle(
-                          //           color: Colors.white60,
-                          //           fontSize: 11,
-                          //           height: 1.5,
-                          //         ),
-                          //       ),
-                          //       if (onNew != null) ...[
-                          //         const SizedBox(height: 12),
-                          //         FilledButton(
-                          //           onPressed: busy ? null : onNew,
-                          //           style: FilledButton.styleFrom(
-                          //             backgroundColor: const Color(0xffeeeae0),
-                          //             foregroundColor: StudioColors.ink,
-                          //             minimumSize: const Size(0, 34),
-                          //             padding: const EdgeInsets.symmetric(
-                          //               horizontal: 12,
-                          //             ),
-                          //           ),
-                          //           child: const Text(
-                          //             'Create poster',
-                          //             style: TextStyle(fontSize: 10),
-                          //           ),
-                          //         ),
-                          //       ],
-                          //     ],
-                          //   ),
-                          // ),
-                          const Padding(
-                            padding: EdgeInsets.fromLTRB(10, 18, 0, 2),
-                            child: Row(
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: .06),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: Colors.white10),
+                            ),
+                            child: const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Icon(
-                                  Icons.lock_outline,
-                                  size: 12,
-                                  color: Colors.white54,
+                                  Icons.directions_car_outlined,
+                                  color: Color(0xffe9bd8d),
                                 ),
-                                SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    'Your personal workspace',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      color: Colors.white54,
-                                    ),
+                                SizedBox(height: 12),
+                                Text(
+                                  'Ready for auction.',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  'Your vehicles, beautifully presented.',
+                                  style: TextStyle(
+                                    color: Colors.white60,
+                                    fontSize: 11,
+                                    height: 1.5,
                                   ),
                                 ),
                               ],
@@ -339,71 +394,56 @@ class StudioShell extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 18),
+                    const SizedBox(width: 20),
                   ],
                   Expanded(
                     child: Container(
                       clipBehavior: Clip.antiAlias,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(desktop ? 28 : 24),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: .85),
-                          width: 1.5,
-                        ),
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [Color(0xfff7f7f4), Color(0xffedeeea)],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: .07),
-                            blurRadius: 24,
-                            offset: const Offset(0, 12),
-                          ),
-                        ],
+                        color: StudioColors.paper,
+                        borderRadius: BorderRadius.circular(desktop ? 24 : 0),
+                        border: desktop
+                            ? Border.all(color: Colors.white)
+                            : null,
                       ),
                       child: Column(
                         children: [
-                          Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              desktop ? 28 : 14,
-                              12,
-                              desktop ? 24 : 10,
-                              10,
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: desktop ? 28 : 16,
+                              vertical: 10,
+                            ),
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              border: Border(
+                                bottom: BorderSide(color: StudioColors.line),
+                              ),
                             ),
                             child: Row(
                               children: [
-                                if (!desktop && section != 'Create')
-                                  IconButton(
-                                    tooltip: 'Back to editor',
-                                    onPressed: busy ? null : onEditor,
-                                    icon: const Icon(
-                                      Icons.arrow_back_rounded,
-                                      size: 20,
-                                    ),
-                                  ),
-                                if (!desktop && section == 'Create') ...[
+                                if (!desktop) ...[
                                   const Icon(
                                     Icons.auto_awesome_mosaic_rounded,
-                                    size: 20,
+                                    color: StudioColors.accent,
+                                    size: 22,
                                   ),
-                                  const SizedBox(width: 9),
+                                  const SizedBox(width: 10),
                                 ],
-                                Text(
-                                  desktop
-                                      ? 'WORKSPACE  /  ${section.toUpperCase()}'
-                                      : 'Poster Studio',
-                                  style: TextStyle(
-                                    fontSize: desktop ? 10 : 14,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: desktop ? 1.5 : -.3,
-                                    color: StudioColors.muted,
+                                Expanded(
+                                  child: Text(
+                                    desktop
+                                        ? 'Workspace  /  $section'
+                                        : 'Nojoom Studio',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                                const Spacer(),
                                 if (onNew != null)
-                                  IconButton(
+                                  IconButton.filledTonal(
                                     tooltip: 'New poster',
                                     onPressed: busy ? null : onNew,
                                     icon: const Icon(
@@ -411,50 +451,26 @@ class StudioShell extends StatelessWidget {
                                       size: 21,
                                     ),
                                   ),
-                                if (!desktop && onHistory != null)
-                                  IconButton(
-                                    tooltip: 'History',
-                                    onPressed: busy ? null : onHistory,
-                                    icon: const Icon(
-                                      Icons.history_rounded,
-                                      size: 21,
-                                    ),
-                                  ),
-                                if (!desktop && onAuctionVehicles != null)
-                                  IconButton(
-                                    tooltip: 'Auction list',
-                                    onPressed: busy ? null : onAuctionVehicles,
-                                    icon: const Icon(
-                                      Icons.gavel_outlined,
-                                      size: 21,
-                                    ),
-                                  ),
-                                if (!desktop && onVehiclesLabel != null)
-                                  IconButton(
-                                    tooltip: 'Vehicles Label',
-                                    onPressed: busy ? null : onVehiclesLabel,
-                                    icon: const Icon(
-                                      Icons.sell_outlined,
-                                      size: 21,
-                                    ),
-                                  ),
-                                if (desktop)
+                                if (desktop) ...[
+                                  const SizedBox(width: 16),
                                   const StudioBadge(
                                     label: 'VEHICLE STUDIO',
                                     icon: Icons.auto_awesome,
                                   ),
+                                ],
                               ],
                             ),
                           ),
                           Expanded(child: child),
                           ?footer,
+                          if (!desktop) _mobileNavigation(),
                         ],
                       ),
                     ),
                   ),
                 ],
               ),
-                            );
+            );
           },
         ),
       ),
@@ -518,11 +534,11 @@ class StudioCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: padding,
     decoration: BoxDecoration(
-      color: dark
-          ? const Color(0xff434740)
-          : Colors.white.withValues(alpha: .88),
+      color: dark ? const Color(0xff2d443a) : Colors.white,
       borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: dark ? const Color(0xff55594f) : Colors.white),
+      border: Border.all(
+        color: dark ? const Color(0xff40584b) : StudioColors.line,
+      ),
       boxShadow: [
         BoxShadow(
           color: Colors.black.withValues(alpha: .035),
@@ -674,10 +690,10 @@ class StudioHeading extends StatelessWidget {
             Text(
               title,
               style: const TextStyle(
-                fontSize: 36,
-                height: 1.05,
-                fontWeight: FontWeight.w500,
-                letterSpacing: -1.8,
+                fontSize: 32,
+                height: 1.12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -1.2,
               ),
             ),
             const SizedBox(height: 12),

@@ -21,6 +21,7 @@ import 'studio_ui.dart';
 import 'custom_template.dart';
 import 'vehicle_import.dart';
 import 'vehicles_label_screen.dart';
+import 'batch_posters_screen.dart';
 
 Set<String> _vehicleIdentityKeys(VehicleDetails vehicle) {
   final keys = <String>{};
@@ -120,10 +121,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     setState(() {
       _active = tab;
       if (tab == _WorkspaceTab.labels) {
-        _labelsPage = VehiclesLabelScreen(
-          key: UniqueKey(),
-          history: _history,
-        );
+        _labelsPage = VehiclesLabelScreen(key: UniqueKey(), history: _history);
       }
     });
     if (tab == _WorkspaceTab.create) {
@@ -697,6 +695,40 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  Future<void> _generateAll() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      // Include the current vehicle's latest photos without creating an empty
+      // draft when the user opens batch generation from a fresh editor.
+      if (_dirty) {
+        final id = await _history.save(
+          _vehicle,
+          _photos,
+          id: _draftId,
+          templateSvg: _customTemplate?.source,
+          templateName: _customTemplate?.name,
+        );
+        if (!mounted) return;
+        setState(() {
+          _draftId = id;
+          _dirty = false;
+        });
+      }
+      if (!mounted) return;
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BatchPostersScreen(history: _history),
+        ),
+      );
+    } catch (error) {
+      _showError('Could not prepare saved posters: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _selectTemplate(String choice) async {
     if (_busy) return;
     if (choice == 'original') {
@@ -813,6 +845,42 @@ class _EditorScreenState extends State<EditorScreen> {
             PopupMenuItem(value: 'sample', child: Text('Clean showroom')),
             PopupMenuItem(value: 'import', child: Text('Import SVG template…')),
           ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _batchGenerationCard() => StudioCard(
+    padding: const EdgeInsets.all(16),
+    child: Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 16,
+      runSpacing: 12,
+      children: [
+        const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Create posters for every vehicle',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            SizedBox(height: 5),
+            Text(
+              'Add photos and save each vehicle.\nExport separate JPGs or one PDF when ready.',
+              style: TextStyle(
+                fontSize: 11,
+                color: StudioColors.muted,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+        OutlinedButton.icon(
+          key: const ValueKey('generate-all-posters'),
+          onPressed: _busy ? null : _generateAll,
+          icon: const Icon(Icons.collections_outlined, size: 18),
+          label: const Text('Generate all posters'),
         ),
       ],
     ),
@@ -1034,8 +1102,8 @@ class _EditorScreenState extends State<EditorScreen> {
     'Add the details you want to show on your poster.',
     Column(
       children: [
-        _field('title', 'Model', '2010 TOYOTA'),
-        _field('model', 'Vehicle Type', 'COROLLA'),
+        _field('title', 'Brand and year', 'TOYOTA 2013'),
+        _field('model', 'Model', 'CROLLA LE'),
         Row(
           children: [
             Expanded(
@@ -1251,6 +1319,8 @@ class _EditorScreenState extends State<EditorScreen> {
               const SizedBox(height: 20),
               _templateSelector(),
               const SizedBox(height: 16),
+              _batchGenerationCard(),
+              const SizedBox(height: 16),
               if (wide)
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1418,9 +1488,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-    final file = File(
-      '${directory.path}/$_safeNumber-$timestamp.$extension',
-    );
+    final file = File('${directory.path}/$_safeNumber-$timestamp.$extension');
 
     await file.writeAsBytes(bytes, flush: true);
 

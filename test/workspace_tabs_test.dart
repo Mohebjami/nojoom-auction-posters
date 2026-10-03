@@ -47,6 +47,9 @@ void main() {
     );
     await _settleStorage(tester);
     final initialPushes = observer.pushes;
+    expect(find.text('Brand and year'), findsOneWidget);
+    expect(find.text('Model'), findsOneWidget);
+    expect(find.text('Vehicle Type'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('studio-tab-auction-list')));
     await _settleStorage(tester);

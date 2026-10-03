@@ -151,12 +151,13 @@ Number,Vehicle,Year,Color,Price (USD),Stock / ID
 
       expect(rows, hasLength(2));
       expect(rows[0].number, '2');
-      expect(rows[0].title, '2010 TOYOTA COROLLA');
-      expect(rows[0].model, '2010');
+      expect(rows[0].title, '2010');
+      expect(rows[0].model, '2010 TOYOTA COROLLA');
       expect(rows[0].color, 'SILVER');
       expect(rows[0].price, '6000');
       expect(rows[0].vin, 'JTDKN3DU2A0090987');
-      expect(rows[1].title, '2018 HONDA CIVIC');
+      expect(rows[1].title, '2018');
+      expect(rows[1].model, '2018 HONDA CIVIC');
     },
   );
 

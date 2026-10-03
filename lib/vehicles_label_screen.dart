@@ -39,7 +39,7 @@ class VehiclesLabelScreen extends StatefulWidget {
 class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
   static final _yearPattern = RegExp(r'\b(?:19|20)\d{2}\b');
   static const _persianColors = <String, String>{
-    'black': 'مشکی',
+    'black': 'سیاه',
     'white': 'سفید',
     'silver': 'نقره‌ای',
     'gray': 'خاکستری',
@@ -86,7 +86,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
           vehicle: AuctionVehicle(
             number: entry.vehicle.number,
             vin: entry.vehicle.vin,
-            // Posters store brand/year in title and vehicle type in model.
+            // Posters store brand/year in title and the model in model.
             // Older label edits stored these fields in the opposite order.
             vehicleType:
                 _yearPattern.hasMatch(entry.vehicle.model) &&
@@ -219,12 +219,8 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
         : _yearPattern.firstMatch(vehicle.vehicleType)?.group(0) ?? '';
     final updated = await showDialog<AuctionVehicle>(
       context: context,
-      builder: (context) => _VehicleLabelEditDialog(
-        initial: vehicle.copyWith(
-          vehicleType: _vehicleType(vehicle.vehicleType),
-          year: year,
-        ),
-      ),
+      builder: (context) =>
+          _VehicleLabelEditDialog(initial: vehicle.copyWith(year: year)),
     );
     if (updated == null || !mounted) return;
 
@@ -244,10 +240,17 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
         );
       } else {
         final draft = await widget.history.load(entry.id);
+        final originalBrandYear = draft.vehicle.title;
+        final brandYear = _yearPattern.hasMatch(originalBrandYear)
+            ? originalBrandYear.replaceAll(_yearPattern, updated.year)
+            : [
+                originalBrandYear,
+                updated.year,
+              ].where((part) => part.trim().isNotEmpty).join(' ');
         await widget.history.save(
           VehicleDetails(
             number: updated.number,
-            title: updated.year,
+            title: brandYear.trim(),
             model: updated.vehicleType,
             price: updated.priceUsd,
             color: updated.color,
@@ -279,12 +282,24 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
   String _vehicleType(String input) {
     return input
         .replaceAll(_yearPattern, '')
-        .replaceAll(RegExp(r'\blexus\b', caseSensitive: false), 'لکسوس')
         .replaceAll(
-          RegExp(r'\b(?:toyota\s+)?prius\b', caseSensitive: false),
-          'پریوس',
+          RegExp(r'\b(?:Priuc|Prius)\s+C\b', caseSensitive: false),
+          'پرویوس C',
         )
+        .replaceAll(
+          RegExp(r'\b(?:Priuc|Prius)\b', caseSensitive: false),
+          'پرویوس',
+        )
+        .replaceAll(
+          RegExp(r'\b(?:Crolla|Corolla)\b', caseSensitive: false),
+          'کرولا',
+        )
+        .replaceAll(RegExp(r'\b4Runner\b', caseSensitive: false), 'فوررنر')
+        .replaceAll(RegExp(r'\blexus\b', caseSensitive: false), 'لکسوس')
+        .replaceAll(RegExp(r'\bLimited\b', caseSensitive: false), 'لمیتد')
+        .replaceAll(RegExp(r'\b(?:Toyota|Toytoa)\b', caseSensitive: false), '')
         .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'^[,;/|–—-]+|[,;/|–—-]+$'), '')
         .trim();
   }
 
@@ -632,10 +647,11 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const StudioHeading(
-                          title: 'Vehicles Label',
+                          title: 'Vehicle labels.',
                           subtitle:
-                              'Create a print ready SVG label for each saved auction vehicle.',
+                              'Print-ready labels. Every vehicle, clearly presented.',
                         ),
+                        const SizedBox(height: 20),
                         if (canShowEntries)
                           Align(
                             alignment: Alignment.centerRight,
@@ -729,69 +745,103 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 14),
                   child: StudioCard(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _labelPreview(vehicle, year),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'No. ${vehicle.number}  ·  ${_vehicleType(vehicle.vehicleType)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
+                    padding: const EdgeInsets.all(20),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final details = Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _labelPreview(vehicle, year),
+                            const SizedBox(width: 20),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'No. ${vehicle.number}  ·  ${_vehicleType(vehicle.vehicleType)}',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '$year  ·  ${_persianColor(vehicle.color)}  ·  ${vehicle.vin}',
-                                  style: const TextStyle(
-                                    color: StudioColors.muted,
-                                    fontSize: 12,
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    [year, _persianColor(vehicle.color)]
+                                        .where((value) => value.isNotEmpty)
+                                        .join('  ·  '),
+                                    style: const TextStyle(
+                                      color: StudioColors.muted,
+                                      fontSize: 13,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    vehicle.vin,
+                                    style: const TextStyle(
+                                      color: StudioColors.muted,
+                                      fontSize: 12,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          Column(
+                          ],
+                        );
+                        final actions = Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: _busy ? null : () => _export(vehicle),
+                              icon: const Icon(
+                                Icons.download_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Export SVG'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: _busy ? null : () => _editLabel(entry),
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              label: const Text('Edit'),
+                            ),
+                            IconButton.outlined(
+                              tooltip: 'Delete label',
+                              onPressed: _busy
+                                  ? null
+                                  : () => _deleteLabel(entry),
+                              style: IconButton.styleFrom(
+                                foregroundColor: const Color(0xffac5639),
+                                minimumSize: const Size(48, 48),
+                              ),
+                              icon: const Icon(
+                                Icons.delete_outline_rounded,
+                                size: 20,
+                              ),
+                            ),
+                          ],
+                        );
+                        if (constraints.maxWidth < 700) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              FilledButton.icon(
-                                onPressed: _busy
-                                    ? null
-                                    : () => _export(vehicle),
-                                icon: const Icon(Icons.download_outlined),
-                                label: const Text('Export SVG'),
+                              details,
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Divider(height: 1),
                               ),
-                              const SizedBox(height: 4),
-                              OutlinedButton.icon(
-                                onPressed: _busy
-                                    ? null
-                                    : () => _editLabel(entry),
-                                icon: const Icon(Icons.edit_outlined),
-                                label: const Text('Edit'),
-                              ),
-                              const SizedBox(height: 4),
-                              OutlinedButton.icon(
-                                onPressed: _busy
-                                    ? null
-                                    : () => _deleteLabel(entry),
-                                icon: const Icon(Icons.delete_outline_rounded),
-                                label: const Text('Delete'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xffac5639),
-                                  side: const BorderSide(
-                                    color: Color(0xffac5639),
-                                  ),
-                                ),
-                              ),
+                              actions,
                             ],
-                          ),
-                        ],
-                      ),
+                          );
+                        }
+                        return Row(
+                          children: [
+                            Expanded(child: details),
+                            const SizedBox(width: 24),
+                            actions,
+                          ],
+                        );
+                      },
                     ),
                   ),
                 );

@@ -26,8 +26,9 @@ void main() {
         await history.save(
           VehicleDetails(
             number: number,
-            title: '2010 TOYOTA',
-            model: 'COROLLA',
+            title: 'TOYOTA 2013',
+            model: 'CROLLA LE',
+            color: 'Silver',
             vin: 'VIN-$number',
           ),
           [null, null, null, null],
@@ -67,7 +68,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
     await tester.pumpAndSettle();
-    expect(find.text('No. 2  ·  COROLLA'), findsOneWidget);
+    expect(find.text('No. 2  ·  کرولا LE'), findsOneWidget);
     expect(find.textContaining('TOYOTA'), findsNothing);
     await tester.tap(find.text('No.: low to high'));
     await tester.pumpAndSettle();
@@ -78,7 +79,7 @@ void main() {
         .map((text) => text.data ?? '')
         .where((text) => text.startsWith('No. '))
         .toList();
-    expect(headings.first, 'No. 10  ·  COROLLA');
+    expect(headings.first, 'No. 10  ·  کرولا LE');
     await tester.runAsync(() async {
       await tester.tap(find.text('Export all labels (ZIP)'));
       for (var attempt = 0; attempt < 100 && !output.existsSync(); attempt++) {
@@ -101,12 +102,18 @@ void main() {
         .findAllElements('text')
         .firstWhere((element) => element.getAttribute('id') == id)
         .innerText;
-    expect(field('field-title'), 'COROLLA');
-    expect(field('field-year'), '2010');
+    expect(field('field-title'), 'کرولا LE');
+    expect(field('field-year'), '2013');
+    expect(field('field-color'), 'نقره‌ای');
     expect(field('main-number'), '10');
     expect(contents, isNot(contains('TOYOTA')));
     expect(contents, contains('VIN-A'));
     expect(contents, contains('VIN-B'));
+    expect(contents, contains('پرویوس'));
+    final saved = await tester.runAsync(history.list);
+    expect(saved!.first.vehicle.title, 'TOYOTA 2013');
+    expect(saved.first.vehicle.model, 'CROLLA LE');
+    expect(saved.first.vehicle.color, 'Silver');
     expect(
       tester
           .widget<FilledButton>(
@@ -115,6 +122,59 @@ void main() {
           .onPressed,
       isNotNull,
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('editing a label preserves raw poster model, color and brand', (
+    tester,
+  ) async {
+    final database = (await tester.runAsync(
+      () => databaseFactoryMemory.openDatabase('labels-edit'),
+    ))!;
+    addTearDown(database.close);
+    final history = PosterHistory(openDatabase: () async => database);
+    final id = (await tester.runAsync(
+      () => history.save(
+        const VehicleDetails(
+          number: '2',
+          title: 'TOYOTA 2013',
+          model: 'CROLLA LE',
+          color: 'Silver',
+        ),
+        [null, null, null, null],
+      ),
+    ))!;
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: VehiclesLabelScreen(history: history)),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => tester.tap(find.text('Edit')));
+    await tester.pumpAndSettle();
+    expect(find.text('CROLLA LE'), findsOneWidget);
+    expect(find.text('Silver'), findsOneWidget);
+    final yearField = find.widgetWithText(TextField, 'Year / Model');
+    await tester.enterText(yearField, '2014');
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Save changes'));
+    });
+    // The dialog closes on the frame clock; Sembast finishes on the real loop.
+    for (var attempt = 0; attempt < 10; attempt++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+    }
+    await tester.pumpAndSettle();
+    final draft = (await tester.runAsync(() => history.load(id)))!;
+    expect(draft.vehicle.title, 'TOYOTA 2014');
+    expect(draft.vehicle.model, 'CROLLA LE');
+    expect(draft.vehicle.color, 'Silver');
+    expect(find.text('No. 2  ·  کرولا LE'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
