@@ -20,3 +20,21 @@ int compareVehicleNumbers(String a, String b, {bool ascending = true}) {
   }
   return ascending ? comparison : -comparison;
 }
+
+/// Captures the remaining editing order before any vehicle is renumbered.
+/// Equal numbers keep their original order; reaching the end never wraps.
+List<T> followingVehicleEntries<T>(
+  Iterable<T> entries,
+  T current, {
+  required String Function(T entry) numberOf,
+  required bool Function(T entry, T current) sameEntry,
+}) {
+  final ordered = entries.indexed.toList()
+    ..sort((a, b) {
+      final order = compareVehicleNumbers(numberOf(a.$2), numberOf(b.$2));
+      return order == 0 ? a.$1.compareTo(b.$1) : order;
+    });
+  final index = ordered.indexWhere((item) => sameEntry(item.$2, current));
+  if (index < 0) return [];
+  return ordered.skip(index + 1).map((item) => item.$2).toList();
+}

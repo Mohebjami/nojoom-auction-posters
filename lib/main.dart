@@ -22,15 +22,9 @@ import 'custom_template.dart';
 import 'vehicle_import.dart';
 import 'vehicles_label_screen.dart';
 import 'batch_posters_screen.dart';
-
-Set<String> _vehicleIdentityKeys(VehicleDetails vehicle) {
-  final keys = <String>{};
-  final vin = vehicle.vin.trim().toUpperCase();
-  final number = vehicle.number.trim().toLowerCase();
-  if (vin.isNotEmpty) keys.add('vin:$vin');
-  if (number.isNotEmpty) keys.add('number:$number');
-  return keys;
-}
+import 'duplicate_vehicle_dialog.dart';
+import 'vehicle_draft_import.dart';
+import 'vehicle_number_sort.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -204,6 +198,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _busy = false;
   int? _pendingSlot;
   int? _draftId;
+  List<int>? _remainingDraftIds;
   CustomPosterTemplate? _customTemplate;
   bool _dirty = false;
   PosterHistory get _history => widget.history ?? PosterHistory.instance;
@@ -423,6 +418,21 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
+      if (_draftId != null && _remainingDraftIds == null) {
+        final entries = await _history.list();
+        final current = entries
+            .where((entry) => entry.id == _draftId)
+            .firstOrNull;
+        _remainingDraftIds = current == null
+            ? []
+            : followingVehicleEntries(
+                entries,
+                current,
+                numberOf: (entry) => entry.vehicle.number,
+                sameEntry: (entry, selected) => entry.id == selected.id,
+              ).map((entry) => entry.id).toList();
+      }
+      if (!mounted) return;
       final id = await _history.save(
         _vehicle,
         _photos,
@@ -438,6 +448,9 @@ class _EditorScreenState extends State<EditorScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Poster saved to history.')));
+      if (_remainingDraftIds?.isNotEmpty ?? false) {
+        await _openNextDraft();
+      }
     } catch (error) {
       _showError('Could not save poster: $error');
     } finally {
@@ -471,6 +484,7 @@ class _EditorScreenState extends State<EditorScreen> {
       }
       _photos.fillRange(0, 4, null);
       _draftId = null;
+      _remainingDraftIds = [];
       _dirty = false;
     });
   }
@@ -494,7 +508,10 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  Future<void> _loadDraft(PosterDraft draft) async {
+  Future<bool> _loadDraft(
+    PosterDraft draft, {
+    bool continueSequence = false,
+  }) async {
     CustomPosterTemplate? template;
     try {
       if (draft.templateSvg != null) {
@@ -505,9 +522,9 @@ class _EditorScreenState extends State<EditorScreen> {
       }
     } catch (error) {
       _showError('Could not restore the saved template: $error');
-      return;
+      return false;
     }
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() {
       _customTemplate = template;
       for (final entry in draft.vehicle.toJson().entries) {
@@ -515,8 +532,32 @@ class _EditorScreenState extends State<EditorScreen> {
       }
       _photos.setAll(0, draft.photos);
       _draftId = draft.id;
+      if (!continueSequence) _remainingDraftIds = null;
       _dirty = false;
     });
+    return true;
+  }
+
+  Future<void> _openNextDraft() async {
+    try {
+      final remaining = _remainingDraftIds!;
+      final available = {for (final entry in await _history.list()) entry.id};
+      remaining.removeWhere((id) => !available.contains(id));
+      if (remaining.isEmpty || !mounted) return;
+      final next = await _history.load(remaining.first);
+      if (await _loadDraft(next, continueSequence: true) && mounted) {
+        setState(() => remaining.removeAt(0));
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('Saved. Now editing No. ${next.vehicle.number}.'),
+            ),
+          );
+      }
+    } catch (error) {
+      _showError('Poster saved, but could not open the next vehicle: $error');
+    }
   }
 
   Future<void> _verifyCurrentDraftStillExists() async {
@@ -527,6 +568,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (mounted && !entries.any((entry) => entry.id == _draftId)) {
         setState(() {
           _draftId = null;
+          _remainingDraftIds = [];
           _dirty = true;
         });
       }
@@ -582,50 +624,50 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
 
-      final knownVehicles = <String>{
-        for (final entry in await _history.list())
-          ..._vehicleIdentityKeys(entry.vehicle),
-      };
-      var savedCount = 0;
-      var newCount = 0;
-      var oldCount = 0;
-      for (final vehicle in vehicles) {
-        final identityKeys = _vehicleIdentityKeys(vehicle);
-        final isOld = identityKeys.any(knownVehicles.contains);
-        final section = isOld
-            ? PosterSections.oldVehicles
-            : PosterSections.newVehicles;
-        if (isOld) {
-          oldCount += 1;
-        } else {
-          newCount += 1;
-          knownVehicles.addAll(identityKeys);
-        }
-        final savedId = await _history.save(
-          vehicle,
-          List<Uint8List?>.filled(4, null),
-          section: section,
-        );
-        if (savedId > 0) {
-          savedCount += 1;
-        }
-      }
+      final plan = await VehicleDraftImportPlan.prepare(
+        vehicles: vehicles,
+        existing: await _history.list(),
+        resolveDuplicate: (conflict) async {
+          if (!mounted) {
+            return const DuplicateImportDecision(DuplicateImportAction.cancel);
+          }
+          return await showDialog<DuplicateImportDecision>(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => DuplicateVehicleDialog(conflict: conflict),
+              ) ??
+              const DuplicateImportDecision(DuplicateImportAction.cancel);
+        },
+      );
+      if (plan == null || !mounted) return;
+      await _history.importVehicleDetails(plan.drafts);
 
       if (!mounted) return;
+      if (plan.drafts.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Skipped ${plan.skippedCount} duplicate rows.'),
+          ),
+        );
+        return;
+      }
+
       setState(() {
         _draftId = null;
-        _dirty = false;
+        _remainingDraftIds = [];
         _photos.fillRange(0, 4, null);
         for (final controller in _controllers.values) {
           controller.clear();
         }
+        _dirty = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Imported $savedCount draft${savedCount == 1 ? '' : 's'}: '
-            '$newCount new, $oldCount old.',
+            'Imported ${plan.drafts.length} drafts: ${plan.addedCount} new, '
+            '${plan.replacedCount} duplicate rows replaced, '
+            '${plan.skippedCount} skipped.',
           ),
         ),
       );
@@ -1204,7 +1246,7 @@ class _EditorScreenState extends State<EditorScreen> {
       builder: (context, constraints) => Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          if (constraints.maxWidth >= 600) ...[
+          if (constraints.maxWidth >= 820) ...[
             const Icon(Icons.lock_outline, size: 13, color: StudioColors.muted),
             const SizedBox(width: 7),
             const Text(

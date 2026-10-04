@@ -171,6 +171,45 @@ class PosterHistory {
     });
   }
 
+  /// Commits an approved spreadsheet import together. Updating only vehicle
+  /// details preserves photos, templates, identity, and the creation date.
+  Future<void> importVehicleDetails(
+    List<({int? id, VehicleDetails vehicle})> drafts,
+  ) async {
+    final db = await _db;
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      for (final draft in drafts) {
+        final id = draft.id;
+        if (id != null) {
+          final previous = await _entries.record(id).get(txn);
+          if (previous == null) {
+            throw StateError('A matching saved poster is no longer available.');
+          }
+          await _entries.record(id).put(txn, {
+            ...previous,
+            'vehicle': draft.vehicle.toJson(),
+            'section': PosterSections.oldVehicles,
+            'updatedAt': now,
+          });
+        } else {
+          final newId = await _entries.add(txn, {
+            'version': 3,
+            'templateSvg': null,
+            'templateName': null,
+            'section': PosterSections.newVehicles,
+            'vehicle': draft.vehicle.toJson(),
+            'createdAt': now,
+            'updatedAt': now,
+          });
+          await _photos.record(newId).put(txn, {
+            'slots': List<String?>.filled(4, null),
+          });
+        }
+      }
+    });
+  }
+
   Future<void> delete(int id) async {
     final db = await _db;
     await db.transaction((txn) async {

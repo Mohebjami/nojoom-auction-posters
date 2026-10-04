@@ -15,10 +15,12 @@ import 'package:vehicle_poster/vehicle_import.dart';
 
 Future<void> settleStorage(WidgetTester tester) async {
   // Sembast's streams run on the real event loop, outside the fake frame clock.
-  await tester.runAsync(() async {
-    await tester.pump();
-    await Future<void>.delayed(const Duration(milliseconds: 30));
-  });
+  for (var i = 0; i < 4; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+  }
   await tester.pumpAndSettle();
 }
 
@@ -238,7 +240,7 @@ Number,Vehicle,Year,Color,Price (USD),Stock / ID
       ]);
       expect(find.byType(Image), findsNWidgets(2));
       fields[2].controller!.text = '7500';
-      await tester.tap(find.text('Save changes'));
+      await tester.runAsync(() => tester.tap(find.text('Save changes')));
       await settleStorage(tester);
       expect(
         (await tester.runAsync(() => history.load(id)))!.vehicle.price,

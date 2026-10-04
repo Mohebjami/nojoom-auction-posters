@@ -121,7 +121,9 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
     }).toList();
   }
 
-  void _reload() => setState(() => _entries = _loadVehicles());
+  void _reload() => setState(() {
+    _entries = _loadVehicles();
+  });
 
   Future<String> _loadTemplate() =>
       _template ??= rootBundle.loadString('assets/vehicles_label.svg');
@@ -213,6 +215,23 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
 
   Future<void> _editLabel(_VehicleLabelEntry entry) async {
     if (_busy) return;
+    final queue = [
+      entry,
+      ...followingVehicleEntries(
+        await _entries,
+        entry,
+        numberOf: (item) => item.vehicle.number,
+        sameEntry: (item, current) =>
+            item.id == current.id &&
+            item.isAuctionVehicle == current.isAuctionVehicle,
+      ),
+    ];
+    for (final current in queue) {
+      if (!mounted || !await _editOneLabel(current)) return;
+    }
+  }
+
+  Future<bool> _editOneLabel(_VehicleLabelEntry entry) async {
     final vehicle = entry.vehicle;
     final year = vehicle.year.trim().isNotEmpty
         ? vehicle.year.trim()
@@ -222,7 +241,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
       builder: (context) =>
           _VehicleLabelEditDialog(initial: vehicle.copyWith(year: year)),
     );
-    if (updated == null || !mounted) return;
+    if (updated == null || !mounted) return false;
 
     setState(() => _busy = true);
     try {
@@ -263,17 +282,19 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
           section: draft.section,
         );
       }
-      if (!mounted) return;
+      if (!mounted) return false;
       _reload();
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Vehicle label updated.')));
+      return true;
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not update label: $error')),
         );
       }
+      return false;
     } finally {
       if (mounted) setState(() => _busy = false);
     }

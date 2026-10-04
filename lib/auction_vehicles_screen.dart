@@ -64,45 +64,61 @@ class _AuctionVehiclesScreenState extends State<AuctionVehiclesScreen> {
     AuctionVehicleEntry? entry,
   }) async {
     if (_busy) return;
-    final usedNumbers = <String>{
-      for (final item in entries)
-        if (item.id != entry?.id) item.vehicle.number.trim(),
-    };
-    final vehicle = await showModalBottomSheet<AuctionVehicle>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _AuctionVehicleForm(
-        initial: entry?.vehicle ?? AuctionVehicle(number: _nextNumber(entries)),
-        usedNumbers: usedNumbers,
-        editing: entry != null,
-      ),
-    );
-    if (!mounted || vehicle == null) return;
-
-    setState(() => _busy = true);
-    try {
-      if (entry == null) {
-        await widget.history.createAuctionVehicle(vehicle);
-      } else {
-        await widget.history.updateAuctionVehicle(entry.id, vehicle);
-      }
+    final queue = <AuctionVehicleEntry?>[
+      entry,
+      if (entry != null)
+        ...followingVehicleEntries<AuctionVehicleEntry>(
+          entries,
+          entry,
+          numberOf: (item) => item.vehicle.number,
+          sameEntry: (item, current) => item.id == current.id,
+        ),
+    ];
+    for (final current in queue) {
       if (!mounted) return;
-      _reload();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            entry == null
-                ? 'Auction vehicle added.'
-                : 'Auction vehicle updated.',
-          ),
+      final usedNumbers = <String>{
+        for (final item in entries)
+          if (item.id != current?.id) item.vehicle.number.trim(),
+      };
+      final vehicle = await showModalBottomSheet<AuctionVehicle>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => _AuctionVehicleForm(
+          initial:
+              current?.vehicle ?? AuctionVehicle(number: _nextNumber(entries)),
+          usedNumbers: usedNumbers,
+          editing: current != null,
         ),
       );
-    } catch (error) {
-      _showError('Could not save auction vehicle: $error');
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      if (!mounted || vehicle == null) return;
+
+      setState(() => _busy = true);
+      try {
+        if (current == null) {
+          await widget.history.createAuctionVehicle(vehicle);
+        } else {
+          await widget.history.updateAuctionVehicle(current.id, vehicle);
+        }
+        entries = await widget.history.listAuctionVehicles();
+        if (!mounted) return;
+        _reload();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              current == null
+                  ? 'Auction vehicle added.'
+                  : 'Auction vehicle updated.',
+            ),
+          ),
+        );
+      } catch (error) {
+        _showError('Could not save auction vehicle: $error');
+        return;
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
     }
   }
 
@@ -688,13 +704,15 @@ class _AuctionVehiclesScreenState extends State<AuctionVehiclesScreen> {
                     ],
                   ),
                   const SizedBox(height: 22),
-                  Row(
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    spacing: 12,
+                    runSpacing: 8,
                     children: [
                       const StudioBadge(
                         label: 'AUCTION INVENTORY',
                         icon: Icons.gavel_outlined,
                       ),
-                      const Spacer(),
                       Text(
                         '${visible.length} of ${entries.length} vehicle${entries.length == 1 ? '' : 's'}',
                         style: const TextStyle(
