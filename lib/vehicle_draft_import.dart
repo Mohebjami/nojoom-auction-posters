@@ -55,12 +55,15 @@ class VehicleDraftImportPlan {
   static Future<VehicleDraftImportPlan?> prepare({
     required List<VehicleDetails> vehicles,
     required List<PosterHistoryEntry> existing,
+    DateTime? importedAt,
     required Future<DuplicateImportDecision> Function(VehicleImportConflict)
     resolveDuplicate,
   }) async {
+    final importDate = (importedAt ?? DateTime.now()).toLocal();
     final targets = [
       for (final entry in existing)
-        VehicleImportMatch(id: entry.id, vehicle: entry.vehicle),
+        if (_sameDate(entry.labelDate.toLocal(), importDate))
+          VehicleImportMatch(id: entry.id, vehicle: entry.vehicle),
     ];
     final changed = <int>{};
     var added = 0;
@@ -122,6 +125,9 @@ class VehicleDraftImportPlan {
       skippedCount: skipped,
     );
   }
+
+  static bool _sameDate(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   static Set<String> _identityKeys(VehicleDetails vehicle) {
     final vin = vehicle.vin.trim().toUpperCase();

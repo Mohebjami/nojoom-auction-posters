@@ -624,8 +624,10 @@ class _EditorScreenState extends State<EditorScreen> {
         );
       }
 
+      final importedAt = DateTime.now();
       final plan = await VehicleDraftImportPlan.prepare(
         vehicles: vehicles,
+        importedAt: importedAt,
         existing: await _history.list(),
         resolveDuplicate: (conflict) async {
           if (!mounted) {
@@ -640,7 +642,7 @@ class _EditorScreenState extends State<EditorScreen> {
         },
       );
       if (plan == null || !mounted) return;
-      await _history.importVehicleDetails(plan.drafts);
+      await _history.importVehicleDetails(plan.drafts, importedAt: importedAt);
 
       if (!mounted) return;
       if (plan.drafts.isEmpty) {

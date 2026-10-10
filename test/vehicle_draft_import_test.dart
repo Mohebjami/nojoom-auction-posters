@@ -21,6 +21,77 @@ void main() {
       history.save(vehicle, [null, null, null, null]);
 
   test(
+    'same vehicle on another import date creates a separate draft',
+    () async {
+      const vehicle = VehicleDetails(number: '1', vin: 'ABC', model: 'Prius');
+      final firstDate = DateTime(2025, 1, 2, 23, 59);
+      final nextDate = DateTime(2025, 1, 3, 0, 1);
+      await history.importVehicleDetails([
+        (id: null, vehicle: vehicle),
+      ], importedAt: firstDate);
+      final first = (await history.list()).single;
+      final plan = (await VehicleDraftImportPlan.prepare(
+        vehicles: const [vehicle],
+        existing: await history.list(),
+        importedAt: nextDate,
+        resolveDuplicate: (_) async => throw StateError('Different day is new'),
+      ))!;
+      expect(plan.addedCount, 1);
+      expect(plan.replacedCount, 0);
+      expect(plan.drafts.single.id, isNull);
+      await history.importVehicleDetails(plan.drafts, importedAt: nextDate);
+      final entries = await history.list();
+      expect(entries, hasLength(2));
+      expect(
+        entries.firstWhere((entry) => entry.id == first.id).labelDate,
+        firstDate.toUtc(),
+      );
+      expect(
+        entries.firstWhere((entry) => entry.id != first.id).labelDate,
+        nextDate.toUtc(),
+      );
+
+      var conflicts = 0;
+      final repeated = (await VehicleDraftImportPlan.prepare(
+        vehicles: const [vehicle],
+        existing: entries,
+        importedAt: DateTime(2025, 1, 3, 18),
+        resolveDuplicate: (conflict) async {
+          conflicts++;
+          expect(conflict.matches, hasLength(1));
+          expect(conflict.matches.single.id, isNot(first.id));
+          return const DuplicateImportDecision(DuplicateImportAction.skip);
+        },
+      ))!;
+      expect(conflicts, 1);
+      expect(repeated.skippedCount, 1);
+      expect(repeated.drafts, isEmpty);
+    },
+  );
+
+  test('repeated rows within a new-day import are still duplicates', () async {
+    const vehicle = VehicleDetails(number: '1', vin: 'ABC');
+    await history.importVehicleDetails([
+      (id: null, vehicle: vehicle),
+    ], importedAt: DateTime(2025, 1, 2));
+    var conflicts = 0;
+    final plan = (await VehicleDraftImportPlan.prepare(
+      vehicles: const [vehicle, vehicle],
+      existing: await history.list(),
+      importedAt: DateTime(2025, 1, 3),
+      resolveDuplicate: (conflict) async {
+        conflicts++;
+        expect(conflict.matches.single.id, isNull);
+        expect(conflict.matches.single.importRow, 1);
+        return const DuplicateImportDecision(DuplicateImportAction.skip);
+      },
+    ))!;
+    expect(conflicts, 1);
+    expect(plan.addedCount, 1);
+    expect(plan.skippedCount, 1);
+  });
+
+  test(
     'matches VIN or number without case or surrounding whitespace',
     () async {
       final vinId = await save(const VehicleDetails(number: '1', vin: 'ABC'));

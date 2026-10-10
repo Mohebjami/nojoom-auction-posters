@@ -20,11 +20,13 @@ class _VehicleLabelEntry {
   final int id;
   final AuctionVehicle vehicle;
   final bool isAuctionVehicle;
+  final DateTime date;
 
   const _VehicleLabelEntry({
     required this.id,
     required this.vehicle,
     required this.isAuctionVehicle,
+    required this.date,
   });
 }
 
@@ -68,6 +70,21 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
   Future<String>? _template;
   bool _busy = false;
   bool _numberAscending = true;
+  String? _selectedDate;
+
+  String _dateKey(DateTime value) {
+    final date = value.toLocal();
+    return '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+  }
+
+  List<_VehicleLabelEntry> _inFolder(List<_VehicleLabelEntry> entries) =>
+      _selectedDate == null
+      ? entries
+      : entries
+            .where((entry) => _dateKey(entry.date) == _selectedDate)
+            .toList();
 
   @override
   void initState() {
@@ -83,6 +100,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
         _VehicleLabelEntry(
           id: entry.id,
           isAuctionVehicle: false,
+          date: entry.labelDate,
           vehicle: AuctionVehicle(
             number: entry.vehicle.number,
             vin: entry.vehicle.vin,
@@ -110,6 +128,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
           id: entry.id,
           vehicle: entry.vehicle,
           isAuctionVehicle: true,
+          date: entry.createdAt,
         ),
     ];
     final seen = <String>{};
@@ -117,7 +136,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
       final vehicle = entry.vehicle;
       final key =
           '${vehicle.number.trim().toLowerCase()}|${vehicle.vin.trim().toLowerCase()}';
-      return key == '|' || seen.add(key);
+      return key == '|' || seen.add('${_dateKey(entry.date)}|$key');
     }).toList();
   }
 
@@ -174,12 +193,16 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
 
   Future<void> _deleteAllLabels() async {
     if (_busy) return;
+    final date = _selectedDate;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => const StudioConfirmDialog(
-        title: 'Delete all vehicle labels?',
-        message:
-            'This also permanently deletes all saved posters and auction vehicles shown in this list, including their poster photos.',
+      builder: (context) => StudioConfirmDialog(
+        title: date == null
+            ? 'Delete all vehicle labels?'
+            : 'Delete labels in $date?',
+        message: date == null
+            ? 'This also permanently deletes all saved posters and auction vehicles shown in this list, including their poster photos.'
+            : 'This permanently deletes the saved posters and auction vehicles in this date folder, including their poster photos.',
         cancelLabel: 'Cancel',
         confirmLabel: 'Delete all',
         icon: Icons.delete_sweep_outlined,
@@ -193,14 +216,27 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
     try {
       final savedPosters = await widget.history.list();
       final auctionVehicles = await widget.history.listAuctionVehicles();
-      await widget.history.deleteMany(savedPosters.map((entry) => entry.id));
+      await widget.history.deleteMany(
+        savedPosters
+            .where((entry) => date == null || _dateKey(entry.labelDate) == date)
+            .map((entry) => entry.id),
+      );
       for (final entry in auctionVehicles) {
-        await widget.history.deleteAuctionVehicle(entry.id);
+        if (date == null || _dateKey(entry.createdAt) == date) {
+          await widget.history.deleteAuctionVehicle(entry.id);
+        }
       }
       if (!mounted) return;
+      _selectedDate = null;
       _reload();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('All vehicle labels deleted.')),
+        SnackBar(
+          content: Text(
+            date == null
+                ? 'All vehicle labels deleted.'
+                : 'Vehicle labels in $date deleted.',
+          ),
+        ),
       );
     } catch (error) {
       if (mounted) {
@@ -218,7 +254,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
     final queue = [
       entry,
       ...followingVehicleEntries(
-        await _entries,
+        _inFolder(await _entries),
         entry,
         numberOf: (item) => item.vehicle.number,
         sameEntry: (item, current) =>
@@ -305,18 +341,18 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
         .replaceAll(_yearPattern, '')
         .replaceAll(
           RegExp(r'\b(?:Priuc|Prius)\s+C\b', caseSensitive: false),
-          'پرویوس C',
+          'پریوس C',
         )
         .replaceAll(
           RegExp(r'\b(?:Priuc|Prius)\b', caseSensitive: false),
-          'پرویوس',
+          'پریوس',
         )
         .replaceAll(
           RegExp(r'\b(?:Crolla|Corolla)\b', caseSensitive: false),
           'کرولا',
         )
-        .replaceAll(RegExp(r'\b4Runner\b', caseSensitive: false), 'فوررنر')
-        .replaceAll(RegExp(r'\blexus\b', caseSensitive: false), 'لکسوس')
+        .replaceAll(RegExp(r'\b4Runner\b', caseSensitive: false), 'فورنر')
+        .replaceAll(RegExp(r'\blexus\b', caseSensitive: false), 'لکسیز')
         .replaceAll(RegExp(r'\bLimited\b', caseSensitive: false), 'لمیتد')
         .replaceAll(RegExp(r'\b(?:Toyota|Toytoa)\b', caseSensitive: false), '')
         .replaceAll(RegExp(r'\s+'), ' ')
@@ -619,7 +655,9 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
       }
       await _saveExport(
         ZipEncoder().encodeBytes(archive),
-        'vehicle_labels.zip',
+        _selectedDate == null
+            ? 'vehicle_labels.zip'
+            : 'vehicle_labels_$_selectedDate.zip',
         'application/zip',
       );
     } catch (error) {
@@ -637,7 +675,17 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
   Widget build(BuildContext context) => FutureBuilder<List<_VehicleLabelEntry>>(
     future: _entries,
     builder: (context, snapshot) {
-      final entries = [...?snapshot.data];
+      final allEntries = [...?snapshot.data];
+      final folders = <String, int>{};
+      for (final entry in allEntries) {
+        folders.update(
+          _dateKey(entry.date),
+          (count) => count + 1,
+          ifAbsent: () => 1,
+        );
+      }
+      final dates = folders.keys.toList()..sort((a, b) => b.compareTo(a));
+      final entries = _inFolder(allEntries);
       entries.sort((a, b) {
         final comparison = compareVehicleNumbers(
           a.vehicle.number,
@@ -670,9 +718,45 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                         const StudioHeading(
                           title: 'Vehicle labels.',
                           subtitle:
-                              'Print-ready labels. Every vehicle, clearly presented.',
+                              'Print-ready labels, organized by import date.',
                         ),
                         const SizedBox(height: 20),
+                        if (dates.isNotEmpty) ...[
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              ChoiceChip(
+                                avatar: const Icon(
+                                  Icons.folder_copy_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('All dates'),
+                                selected: _selectedDate == null,
+                                onSelected: _busy
+                                    ? null
+                                    : (_) =>
+                                          setState(() => _selectedDate = null),
+                              ),
+                              for (final date in dates)
+                                ChoiceChip(
+                                  key: ValueKey('label-folder-$date'),
+                                  avatar: const Icon(
+                                    Icons.folder_outlined,
+                                    size: 18,
+                                  ),
+                                  label: Text('$date (${folders[date]})'),
+                                  selected: _selectedDate == date,
+                                  onSelected: _busy
+                                      ? null
+                                      : (_) => setState(
+                                          () => _selectedDate = date,
+                                        ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                        ],
                         if (canShowEntries)
                           Align(
                             alignment: Alignment.centerRight,
@@ -709,12 +793,20 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                                       ? null
                                       : () => _exportAll(entries),
                                   icon: const Icon(Icons.download_outlined),
-                                  label: const Text('Export all labels (ZIP)'),
+                                  label: Text(
+                                    _selectedDate == null
+                                        ? 'Export all labels (ZIP)'
+                                        : 'Export folder labels (ZIP)',
+                                  ),
                                 ),
                                 OutlinedButton.icon(
                                   onPressed: _busy ? null : _deleteAllLabels,
                                   icon: const Icon(Icons.delete_sweep_outlined),
-                                  label: const Text('Delete all'),
+                                  label: Text(
+                                    _selectedDate == null
+                                        ? 'Delete all'
+                                        : 'Delete folder',
+                                  ),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: const Color(0xffac5639),
                                     side: const BorderSide(

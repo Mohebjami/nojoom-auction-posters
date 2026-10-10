@@ -45,12 +45,16 @@ class PosterHistoryEntry {
   final DateTime updatedAt;
   final String section;
 
+  /// Import date (or original save date), unaffected by later label edits.
+  final DateTime labelDate;
+
   const PosterHistoryEntry(
     this.id,
     this.vehicle,
     this.updatedAt, {
     this.section = PosterSections.oldVehicles,
-  });
+    DateTime? labelDate,
+  }) : labelDate = labelDate ?? updatedAt;
 
   String get title {
     final label = [
@@ -95,6 +99,12 @@ class PosterHistory {
             ),
             DateTime.parse(record.value['updatedAt'] as String),
             section: PosterSections.normalize(record.value['section']),
+            labelDate: DateTime.parse(
+              (record.value['labelDate'] ??
+                      record.value['createdAt'] ??
+                      record.value['updatedAt'])
+                  as String,
+            ),
           ),
         )
         .toList();
@@ -162,6 +172,7 @@ class PosterHistory {
         ),
         'vehicle': vehicle.toJson(),
         'createdAt': previous?['createdAt'] ?? now,
+        'labelDate': previous?['labelDate'] ?? previous?['createdAt'] ?? now,
         'updatedAt': now,
       };
       final key = id ?? await _entries.add(txn, entry);
@@ -174,10 +185,12 @@ class PosterHistory {
   /// Commits an approved spreadsheet import together. Updating only vehicle
   /// details preserves photos, templates, identity, and the creation date.
   Future<void> importVehicleDetails(
-    List<({int? id, VehicleDetails vehicle})> drafts,
-  ) async {
+    List<({int? id, VehicleDetails vehicle})> drafts, {
+    DateTime? importedAt,
+  }) async {
     final db = await _db;
     final now = DateTime.now().toUtc().toIso8601String();
+    final importDate = importedAt?.toUtc().toIso8601String() ?? now;
     await db.transaction((txn) async {
       for (final draft in drafts) {
         final id = draft.id;
@@ -190,6 +203,7 @@ class PosterHistory {
             ...previous,
             'vehicle': draft.vehicle.toJson(),
             'section': PosterSections.oldVehicles,
+            'labelDate': importDate,
             'updatedAt': now,
           });
         } else {
@@ -200,6 +214,7 @@ class PosterHistory {
             'section': PosterSections.newVehicles,
             'vehicle': draft.vehicle.toJson(),
             'createdAt': now,
+            'labelDate': importDate,
             'updatedAt': now,
           });
           await _photos.record(newId).put(txn, {
