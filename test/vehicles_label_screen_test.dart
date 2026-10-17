@@ -176,7 +176,7 @@ void main() {
           AuctionVehicle(
             number: '7',
             vin: vin,
-            vehicleType: 'Prius 4Runner Lexus',
+            vehicleType: 'Prius 4Runner Lexus Land Cruiser',
           ),
         );
       }
@@ -210,6 +210,7 @@ void main() {
     });
     await tester.pumpAndSettle();
     expect(find.text('No. 2  ·  کرولا LE'), findsOneWidget);
+    expect(find.text('No. 7  ·  پریوس فورنر لکسیز لندکروزر'), findsWidgets);
     expect(find.textContaining('TOYOTA'), findsNothing);
     await tester.tap(find.text('No.: low to high'));
     await tester.pumpAndSettle();

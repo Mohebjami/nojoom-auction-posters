@@ -352,6 +352,10 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
           'کرولا',
         )
         .replaceAll(RegExp(r'\b4Runner\b', caseSensitive: false), 'فورنر')
+        .replaceAll(
+          RegExp(r'\bLand\s+Cruiser\b', caseSensitive: false),
+          'لندکروزر',
+        )
         .replaceAll(RegExp(r'\blexus\b', caseSensitive: false), 'لکسیز')
         .replaceAll(RegExp(r'\bLimited\b', caseSensitive: false), 'لمیتد')
         .replaceAll(RegExp(r'\b(?:Toyota|Toytoa)\b', caseSensitive: false), '')

@@ -55,6 +55,15 @@ History is stored locally on the device, or in the browser profile and site addr
 
 ## Rendering and export
 
+Spreadsheet import uses **Primary Price**, falling back to **Red Light** only
+when the primary cell is empty (zero is a valid price). Earlier app exports
+using **Price (USD)** are also supported. Sold and green-light prices are not
+used as fallbacks in this auction format. Known models automatically fill a
+missing brand in **Brand and year**, preserving the year and explicit brands.
+This works offline during import and manual model entry; unknown models leave
+the brand available for manual entry. Label translation renders **Land Cruiser**
+as **لندکروزر**.
+
 The fixed poster artwork is retained from the supplied design. Editable text is rendered from the bundled Inter vector outlines, and long values shrink to fit. Photos are prepared once and reused by the preview, PNG capture, and SVG export. SVG exports embed all required images and do not require network access.
 
 JPG export produces a real JPEG at quality 95, preserves the 1621 × 1987 poster dimensions, and flattens transparency onto white. Native encoding runs in a background isolate.

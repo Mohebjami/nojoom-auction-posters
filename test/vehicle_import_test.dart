@@ -35,7 +35,7 @@ void main() {
     expect(rows, hasLength(1));
     expect(rows.single.number, '2');
     expect(rows.single.vin, 'JTDKN3DU0A0231040');
-    expect(rows.single.title, '2010');
+    expect(rows.single.title, 'TOYOTA 2010');
     expect(rows.single.model, 'Prius');
     expect(rows.single.color, 'White');
     expect(rows.single.price, '6000');
@@ -85,7 +85,7 @@ void main() {
       expect(rows, hasLength(1));
       expect(rows.single.number, '7');
       expect(rows.single.vin, '1N4AL3AP7JC123456');
-      expect(rows.single.title, '2018');
+      expect(rows.single.title, 'NISSAN 2018');
       expect(rows.single.model, '2018 Nissan Altima');
       expect(rows.single.color, 'Blue');
       expect(rows.single.price, '12000');
@@ -155,8 +155,56 @@ No.,Vehicle Type,Model,Color
       utf8.encode('No.,Model\n2,CROLLA LE\n'),
     );
 
-    expect(rows.single.title, isEmpty);
+    expect(rows.single.title, 'TOYOTA');
     expect(rows.single.model, 'CROLLA LE');
+  });
+
+  test(
+    'auction prices prefer Primary Price and only fall back to Red Light',
+    () async {
+      final archive = Archive()
+        ..add(
+          ArchiveFile.string(
+            'xl/worksheets/sheet1.xml',
+            _worksheet([
+              ['Auction list'],
+              [
+                'No.',
+                'Vehicle Type',
+                'Year',
+                'Auction Price (Sold)',
+                'Red\nLight',
+                'Primary\nPrice',
+                'Green Light',
+              ],
+              ['1', 'Prius', '2011', '9900', '6000', '7000', '8000'],
+              ['2', 'Land Cruiser', '2015', '9900', '6500', '', '8000'],
+              ['3', 'Benz C200', '2016', '9900', '6500', '0', '8000'],
+              ['4', 'Unknown model', '2017', '9900', '', '  ', '8000'],
+            ]),
+          ),
+        );
+      final rows = await VehicleListImporter.fromBytes(
+        'auction.xlsx',
+        ZipEncoder().encodeBytes(archive),
+      );
+      expect(rows.map((row) => row.price), ['7000', '6500', '0', '']);
+      expect(rows.map((row) => row.title), [
+        'TOYOTA 2011',
+        'TOYOTA 2015',
+        'MERCEDES-BENZ 2016',
+        '2017',
+      ]);
+      expect(rows[1].model, 'Land Cruiser');
+    },
+  );
+
+  test('uses Red Light when Primary Price column is absent', () async {
+    final rows = await VehicleListImporter.fromBytes(
+      'auction.csv',
+      utf8.encode('No.,Model,Price,Red Light\n1,Prius,9000,6000\n'),
+    );
+    expect(rows.single.price, '6000');
   });
 }
 

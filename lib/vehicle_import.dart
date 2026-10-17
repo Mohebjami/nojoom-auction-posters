@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
 
 import 'poster.dart';
+import 'vehicle_brand.dart';
 
 class VehicleListImporter {
   static final Map<String, Set<String>> _headerAliases = {
@@ -70,6 +71,9 @@ class VehicleListImporter {
       'make and model',
     },
     'brand': {'brand', 'vehicle brand', 'manufacturer', 'make'},
+    'primaryPrice': {'primary price'},
+    'legacyPrimaryPrice': {'price usd'},
+    'redLight': {'red light', 'red light price'},
     'price': {
       'price',
       'price usd',
@@ -126,13 +130,16 @@ class VehicleListImporter {
 
       final vehicle = VehicleDetails(
         number: _cellValue(row, indexMap['number']),
-        title: _posterBrandYearValue(
-          row,
-          headerRow,
-          vehicleTypeIndex: vehicleTypeIndex,
+        title: VehicleBrand.complete(
+          _posterBrandYearValue(
+            row,
+            headerRow,
+            vehicleTypeIndex: vehicleTypeIndex,
+          ),
+          _cellValue(row, vehicleTypeIndex),
         ),
         model: _cellValue(row, vehicleTypeIndex),
-        price: _cellValue(row, indexMap['price']),
+        price: _priceValue(row, indexMap),
         color: _cellValue(row, indexMap['color']),
         vin: _cellValue(row, indexMap['vin']),
       );
@@ -150,6 +157,22 @@ class VehicleListImporter {
     }
 
     return results;
+  }
+
+  static String _priceValue(List<String> row, Map<String, int> columns) {
+    // In the auction format, sold/green-light prices must never be used.
+    if (columns.containsKey('primaryPrice') ||
+        columns.containsKey('redLight')) {
+      // Earlier app exports called their primary price "Price (USD)".
+      final primary = _cellValue(
+        row,
+        columns['primaryPrice'] ?? columns['legacyPrimaryPrice'],
+      );
+      return primary.isNotEmpty
+          ? primary
+          : _cellValue(row, columns['redLight']);
+    }
+    return _cellValue(row, columns['legacyPrimaryPrice'] ?? columns['price']);
   }
 
   static int? _vehicleTypeColumnIndex(List<String> headers) {

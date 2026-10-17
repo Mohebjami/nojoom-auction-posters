@@ -20,6 +20,7 @@ import 'gallery_export.dart';
 import 'studio_ui.dart';
 import 'custom_template.dart';
 import 'vehicle_import.dart';
+import 'vehicle_brand.dart';
 import 'vehicles_label_screen.dart';
 import 'batch_posters_screen.dart';
 import 'duplicate_vehicle_dialog.dart';
@@ -201,6 +202,7 @@ class _EditorScreenState extends State<EditorScreen> {
   List<int>? _remainingDraftIds;
   CustomPosterTemplate? _customTemplate;
   bool _dirty = false;
+  String? _suggestedBrandYear;
   PosterHistory get _history => widget.history ?? PosterHistory.instance;
 
   static const List<String> _photoLabels = [
@@ -941,6 +943,21 @@ class _EditorScreenState extends State<EditorScreen> {
       padding: const EdgeInsets.only(bottom: 16),
       child: TextField(
         controller: _controllers[key],
+        onChanged: key == 'model'
+            ? (model) {
+                final title = _controllers['title']!;
+                final current = title.text.trim();
+                final base = current == _suggestedBrandYear
+                    ? VehicleBrand.yearPattern.firstMatch(current)?.group(0) ??
+                          ''
+                    : current;
+                final completed = VehicleBrand.complete(base, model);
+                if (completed != current) {
+                  title.text = completed;
+                  _suggestedBrandYear = completed;
+                }
+              }
+            : null,
         enabled: !_busy,
         keyboardType: keyboard,
         maxLength: maxLength,
