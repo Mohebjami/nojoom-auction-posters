@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
@@ -97,7 +96,12 @@ Future<BatchPosterExport> generateBatchPosters({
       checkCancelled();
       final png = poster.previewImage ?? await _renderOriginal(poster);
       checkCancelled();
-      final jpg = await compute(encodePosterJpg, png);
+      // Compress page images before embedding them: PDF stream compression
+      // alone cannot reduce the size of an already encoded JPEG.
+      final jpg = await compute(
+        format == BatchPosterFormat.pdf ? encodePosterPdfJpg : encodePosterJpg,
+        png,
+      );
       checkCancelled();
 
       if (zip != null) {

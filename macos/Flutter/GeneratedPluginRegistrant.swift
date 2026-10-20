@@ -7,12 +7,14 @@ import Foundation
 
 import file_selector_macos
 import gal
+import printing
 import share_plus
 import webview_flutter_wkwebview
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   FileSelectorPlugin.register(with: registry.registrar(forPlugin: "FileSelectorPlugin"))
   GalPlugin.register(with: registry.registrar(forPlugin: "GalPlugin"))
+  PrintingPlugin.register(with: registry.registrar(forPlugin: "PrintingPlugin"))
   SharePlusMacosPlugin.register(with: registry.registrar(forPlugin: "SharePlusMacosPlugin"))
   WebViewFlutterPlugin.register(with: registry.registrar(forPlugin: "WebViewFlutterPlugin"))
 }

@@ -81,8 +81,9 @@ class _BatchPostersScreenState extends State<BatchPostersScreen> {
           ..addAll(entries.map((entry) => entry.id));
       });
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() => _error = 'Could not load saved posters: $error');
+      }
     }
   }
 
@@ -133,8 +134,9 @@ class _BatchPostersScreenState extends State<BatchPostersScreen> {
     } finally {
       if (mounted) {
         setState(() {
-          if (_cancelled)
+          if (_cancelled) {
             _message = 'Generation cancelled. No file was exported.';
+          }
           _busy = false;
           _saving = false;
         });

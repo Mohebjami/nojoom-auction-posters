@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:xml/xml.dart';
 
@@ -14,6 +15,7 @@ import 'auction_vehicle.dart';
 import 'poster.dart';
 import 'poster_history.dart';
 import 'studio_ui.dart';
+import 'vehicle_label_print.dart';
 import 'vehicle_number_sort.dart';
 
 class _VehicleLabelEntry {
@@ -68,6 +70,8 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
 
   late Future<List<_VehicleLabelEntry>> _entries;
   Future<String>? _template;
+  final _searchController = TextEditingController();
+  String _query = '';
   bool _busy = false;
   bool _numberAscending = true;
   String? _selectedDate;
@@ -90,6 +94,31 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
   void initState() {
     super.initState();
     _entries = _loadVehicles();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool _matchesSearch(_VehicleLabelEntry entry) {
+    final vehicle = entry.vehicle;
+    final text = [
+      vehicle.number,
+      vehicle.vin,
+      vehicle.vehicleType,
+      _vehicleType(vehicle.vehicleType),
+      vehicle.year,
+      vehicle.color,
+      _persianColor(vehicle.color),
+      vehicle.priceUsd,
+    ].join(' ').toLowerCase();
+    return _query
+        .trim()
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .every(text.contains);
   }
 
   Future<List<_VehicleLabelEntry>> _loadVehicles() async {
@@ -584,6 +613,33 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
     );
   }
 
+  Future<void> _printLabels(List<_VehicleLabelEntry> entries) async {
+    if (_busy || entries.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final template = await _loadTemplate();
+      final pages = <Uint8List>[];
+      for (final entry in entries) {
+        pages.add(await renderVehicleLabel(_svg(entry.vehicle, template)));
+        if (!mounted) return;
+      }
+      await Printing.layoutPdf(
+        name: entries.length == 1
+            ? 'Vehicle label ${entries.single.vehicle.number}'
+            : 'Vehicle labels (${entries.length})',
+        onLayout: (format) => buildVehicleLabelPdf(pages, format),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not print labels: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _export(AuctionVehicle vehicle) async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -689,7 +745,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
         );
       }
       final dates = folders.keys.toList()..sort((a, b) => b.compareTo(a));
-      final entries = _inFolder(allEntries);
+      final entries = _inFolder(allEntries).where(_matchesSearch).toList();
       entries.sort((a, b) {
         final comparison = compareVehicleNumbers(
           a.vehicle.number,
@@ -725,6 +781,10 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                               'Print-ready labels, organized by import date.',
                         ),
                         const SizedBox(height: 20),
+                        if (_busy) ...[
+                          const LinearProgressIndicator(),
+                          const SizedBox(height: 20),
+                        ],
                         if (dates.isNotEmpty) ...[
                           Wrap(
                             spacing: 8,
@@ -761,6 +821,28 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                           ),
                           const SizedBox(height: 20),
                         ],
+                        TextField(
+                          key: const ValueKey('label-search'),
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            labelText: 'Search labels',
+                            hintText:
+                                'Number, VIN, model, year, color or price',
+                            prefixIcon: const Icon(Icons.search),
+                            suffixIcon: _query.isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear search',
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _query = '');
+                                    },
+                                  ),
+                          ),
+                          onChanged: (value) => setState(() => _query = value),
+                        ),
+                        const SizedBox(height: 20),
                         if (canShowEntries)
                           Align(
                             alignment: Alignment.centerRight,
@@ -792,13 +874,28 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                                           },
                                   ),
                                 ),
+                                OutlinedButton.icon(
+                                  onPressed: _busy
+                                      ? null
+                                      : () => _printLabels(entries),
+                                  icon: const Icon(Icons.print_outlined),
+                                  label: Text(
+                                    _query.trim().isNotEmpty
+                                        ? 'Print matching labels (${entries.length})'
+                                        : _selectedDate == null
+                                        ? 'Print all labels'
+                                        : 'Print folder labels',
+                                  ),
+                                ),
                                 FilledButton.icon(
                                   onPressed: _busy
                                       ? null
                                       : () => _exportAll(entries),
                                   icon: const Icon(Icons.download_outlined),
                                   label: Text(
-                                    _selectedDate == null
+                                    _query.trim().isNotEmpty
+                                        ? 'Export matching labels (ZIP)'
+                                        : _selectedDate == null
                                         ? 'Export all labels (ZIP)'
                                         : 'Export folder labels (ZIP)',
                                   ),
@@ -843,11 +940,13 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                   if (snapshot.connectionState != ConnectionState.done) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  return const StudioCard(
+                  return StudioCard(
                     child: Padding(
-                      padding: EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(20),
                       child: Text(
-                        'No saved vehicles yet. Add vehicles in Auction List.',
+                        _query.trim().isNotEmpty
+                            ? 'No labels match your search.'
+                            : 'No saved vehicles yet. Add vehicles in Auction List.',
                       ),
                     ),
                   );
@@ -918,6 +1017,13 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                               label: const Text('Export SVG'),
                             ),
                             OutlinedButton.icon(
+                              onPressed: _busy
+                                  ? null
+                                  : () => _printLabels([entry]),
+                              icon: const Icon(Icons.print_outlined, size: 18),
+                              label: const Text('Print'),
+                            ),
+                            OutlinedButton.icon(
                               onPressed: _busy ? null : () => _editLabel(entry),
                               icon: const Icon(Icons.edit_outlined, size: 18),
                               label: const Text('Edit'),
@@ -938,7 +1044,7 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
                             ),
                           ],
                         );
-                        if (constraints.maxWidth < 700) {
+                        if (constraints.maxWidth < 1050) {
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -965,7 +1071,6 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
               }, childCount: canShowEntries ? entries.length + 1 : 2),
             ),
           ),
-          if (_busy) const SliverToBoxAdapter(child: LinearProgressIndicator()),
         ],
       );
     },

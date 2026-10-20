@@ -7,12 +7,22 @@ import 'package:xml/xml.dart';
 /// Encode a real JPEG and flatten transparency onto white.
 /// Top-level so Flutter's compute can run it off the UI isolate on devices.
 Uint8List encodePosterJpg(Uint8List png) {
+  return _encodePosterJpg(png, quality: 95);
+}
+
+/// Smaller JPEGs for PDF pages, retaining the full poster resolution.
+/// Top-level so PDF exports can encode off the UI isolate on devices.
+Uint8List encodePosterPdfJpg(Uint8List png) {
+  return _encodePosterJpg(png, quality: 85);
+}
+
+Uint8List _encodePosterJpg(Uint8List png, {required int quality}) {
   final decoded = img.decodePng(png);
   if (decoded == null) throw const FormatException('Could not decode poster.');
   final background = img.Image(width: decoded.width, height: decoded.height);
   img.fill(background, color: img.ColorRgb8(255, 255, 255));
   img.compositeImage(background, decoded);
-  return img.encodeJpg(background, quality: 95);
+  return img.encodeJpg(background, quality: quality);
 }
 
 /// Lossless optimization for sharing. Retains vectors, dimensions, and alpha.

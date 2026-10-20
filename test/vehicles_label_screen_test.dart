@@ -10,9 +10,163 @@ import 'package:vehicle_poster/auction_vehicle.dart';
 import 'package:vehicle_poster/poster_history.dart';
 import 'package:vehicle_poster/poster.dart';
 import 'package:xml/xml.dart';
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
+import 'package:printing/src/interface.dart';
 import 'package:vehicle_poster/vehicles_label_screen.dart';
 
+class _TestPrinting extends PrintingPlatform {
+  final jobs = <String>[];
+  final pageCounts = <int>[];
+  bool fail = false;
+
+  @override
+  Future<bool> layoutPdf(
+    Printer? printer,
+    LayoutCallback onLayout,
+    String name,
+    PdfPageFormat format,
+    bool dynamicLayout,
+    bool usePrinterSettings,
+    OutputType outputType,
+    bool forceCustomPrintPaper,
+    bool windowsModernDialog,
+  ) async {
+    if (fail) throw StateError('Printer unavailable');
+    jobs.add(name);
+    final pdf = latin1.decode(await onLayout(PdfPageFormat.a4));
+    pageCounts.add(RegExp(r'/Type\s*/Page\b').allMatches(pdf).length);
+    return false; // A cancelled dialog must also restore the controls.
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
+  testWidgets(
+    'search scopes labels and printing, with cancellation and errors',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final database = (await tester.runAsync(
+        () => databaseFactoryMemory.openDatabase('label-search-print'),
+      ))!;
+      addTearDown(database.close);
+      final history = PosterHistory(openDatabase: () async => database);
+      await tester.runAsync(() async {
+        await history.createAuctionVehicle(
+          const AuctionVehicle(
+            number: '2',
+            vehicleType: 'Corolla',
+            year: '2013',
+            color: 'Silver',
+            vin: 'VIN-COROLLA',
+            priceUsd: '6500',
+          ),
+        );
+        final id = await history.createAuctionVehicle(
+          const AuctionVehicle(
+            number: '10',
+            vehicleType: 'Prius',
+            year: '2017',
+            color: 'Black',
+            vin: 'VIN-PRIUS',
+          ),
+        );
+        await intMapStoreFactory.store('auction_vehicles').record(id).update(
+          database,
+          {'createdAt': DateTime(2025, 1, 3).toUtc().toIso8601String()},
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(body: VehiclesLabelScreen(history: history)),
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.pumpAndSettle();
+      final previous = PrintingPlatform.instance;
+      final printing = _TestPrinting();
+      PrintingPlatform.instance = printing;
+      addTearDown(() => PrintingPlatform.instance = previous);
+      Future<void> printButton(String label) async {
+        await tester.runAsync(() async {
+          await tester.tap(find.text(label).first);
+          for (var attempt = 0; attempt < 300; attempt++) {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            // Printing finishes off the widget test's simulated clock.
+            if (printing.jobs.isNotEmpty &&
+                printing.pageCounts.length == printing.jobs.length) {
+              break;
+            }
+          }
+        });
+        await tester.pumpAndSettle();
+      }
+
+      await printButton('Print all labels');
+      expect(printing.pageCounts, [2]);
+      printing.jobs.clear();
+      printing.pageCounts.clear();
+      await printButton('Print');
+      expect(printing.jobs, ['Vehicle label 2']);
+      expect(printing.pageCounts, [1]);
+      final search = find.byKey(const ValueKey('label-search'));
+      for (final query in [
+        'COROLLA',
+        'vin-corolla',
+        '2013',
+        'silver',
+        'نقره‌ای',
+        'کرولا',
+        '6500',
+        '2 2013',
+      ]) {
+        await tester.enterText(search, query);
+        await tester.pumpAndSettle();
+        expect(find.text('No. 2  ·  کرولا'), findsOneWidget);
+        expect(find.text('No. 10  ·  پریوس'), findsNothing);
+      }
+      printing.jobs.clear();
+      printing.pageCounts.clear();
+      await printButton('Print matching labels (1)');
+      expect(printing.pageCounts, [1]);
+      await tester.enterText(search, 'missing');
+      await tester.pumpAndSettle();
+      expect(find.text('No labels match your search.'), findsOneWidget);
+      expect(find.text('Print all labels'), findsNothing);
+      await tester.tap(find.byTooltip('Clear search'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('label-folder-2025-01-03')));
+      await tester.pumpAndSettle();
+      expect(find.text('No. 2  ·  کرولا'), findsNothing);
+      printing.jobs.clear();
+      printing.pageCounts.clear();
+      await printButton('Print folder labels');
+      expect(printing.jobs, ['Vehicle label 10']);
+      expect(printing.pageCounts, [1]);
+      printing.fail = true;
+      await tester.runAsync(() async {
+        await tester.tap(find.text('Print'));
+        await Future<void>.delayed(const Duration(seconds: 2));
+      });
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Could not print labels:'), findsOneWidget);
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.widgetWithText(OutlinedButton, 'Print'),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test(
     'import date survives edits and is refreshed by a later import',
     () async {
@@ -45,6 +199,10 @@ void main() {
   testWidgets('date folders filter export, edit queue and deletion', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1200, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final database = (await tester.runAsync(
       () => databaseFactoryMemory.openDatabase('label-folders'),
     ))!;
@@ -153,6 +311,10 @@ void main() {
   testWidgets('exports every label with unique names in one ZIP', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1200, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final database = (await tester.runAsync(
       () => databaseFactoryMemory.openDatabase('labels-export'),
     ))!;
@@ -272,6 +434,10 @@ void main() {
   testWidgets('editing a label preserves raw poster model, color and brand', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1200, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final database = (await tester.runAsync(
       () => databaseFactoryMemory.openDatabase('labels-edit'),
     ))!;
