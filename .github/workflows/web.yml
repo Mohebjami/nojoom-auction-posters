@@ -1,0 +1,94 @@
+name: Deploy Web
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Build web release
+        run: flutter build web --release --base-href /nojoom-auction-posters/
+
+      - name: Prepare Pages files
+        run: touch build/web/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+          include-hidden-files: true
+
+      - name: Check out deployment branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: .gh-pages
+
+      - name: Update gh-pages
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          rsync -a --delete --exclude=.git build/web/ .gh-pages/
+          cd .gh-pages
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          if git diff --cached --quiet; then
+            echo 'The deployment branch is already up to date.'
+          else
+            git commit -m "Deploy Flutter web from main ${SOURCE_SHA}"
+            git push origin HEAD:refs/heads/gh-pages
+          fi
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      # Pushes made with GITHUB_TOKEN do not trigger a Pages build.
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

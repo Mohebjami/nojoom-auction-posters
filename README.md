@@ -80,6 +80,22 @@ The test suite covers optional inputs, vector text, embedded images, photo cropp
 
 Figma import and physical-device gallery or share sheets require manual verification.
 
+## Web deployment
+
+The [Deploy Web workflow](.github/workflows/web.yml) runs on pushes to `main`
+and can also be started manually from the Actions tab with `main` selected.
+It uses Flutter `3.47.5`, installs the locked dependencies, runs analysis,
+and builds a release with the `/nojoom-auction-posters/` base path.
+It commits the generated files to `gh-pages`, preserving branch history, then
+deploys the same build directly to GitHub Pages.
+
+Before the first run, open **Settings → Pages → Build and deployment** and set
+**Source** to **GitHub Actions**. If the `github-pages` environment restricts
+deployment branches, allow `main`. The workflow uses the built-in `GITHUB_TOKEN`;
+no personal token or deployment key is needed. Direct artifact deployment is
+required because pushes made with `GITHUB_TOKEN` do not trigger a Pages build.
+See [GitHub's Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+
 ## Project structure
 
 - [`lib/main.dart`](lib/main.dart): editor, photo picker, preview, and sharing.
