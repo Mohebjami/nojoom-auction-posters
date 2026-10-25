@@ -53,6 +53,19 @@ downloads the file, and mobile opens the share sheet.
 
 History is stored locally on the device, or in the browser profile and site address on the web. There is no account or cross-device synchronization. Uninstalling the app or clearing browser storage removes local history.
 
+Excel and CSV imports check VINs against all saved drafts and earlier rows in
+the file, ignoring case and surrounding spaces. For each duplicate, choose
+**Keep both**, **Replace with new**, or **Keep previous**, optionally applying
+the choice to remaining duplicates. Replacement preserves the saved photos and
+template. Empty VINs and reused lot numbers alone do not trigger a duplicate.
+
+Use **Find VIN duplicates** in History to review all saved posters, across all
+dates and regardless of search filters. **Keep previous** retains the oldest
+entry, **Replace with new** retains the newest by original save/import date,
+and **Keep both** retains every entry in that VIN group. Keeping only one
+removes the other entries and their saved photos. Cancelling either review
+leaves all data unchanged.
+
 ## Rendering and export
 
 Spreadsheet import uses **Primary Price**, falling back to **Red Light** only

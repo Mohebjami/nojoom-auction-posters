@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 
 import 'auction_vehicles_screen.dart';
 import 'batch_posters_screen.dart';
+import 'duplicate_vehicle_dialog.dart';
 import 'poster_history.dart';
 import 'studio_ui.dart';
+import 'vehicle_draft_import.dart';
+import 'vehicle_duplicate_review.dart';
 import 'vehicle_number_sort.dart';
 
 enum _HistorySort { numberAscending, numberDescending, newest, oldest }
@@ -75,6 +78,50 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _thumbnails.clear();
       _entries = widget.history.list();
     });
+  }
+
+  Future<void> _reviewDuplicates() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final plan = await VehicleDuplicateReviewPlan.prepare(
+        existing: await widget.history.list(),
+        resolveDuplicate: (conflict) async {
+          if (!mounted) {
+            return const DuplicateImportDecision(DuplicateImportAction.cancel);
+          }
+          return await showDialog<DuplicateImportDecision>(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => DuplicateVehicleDialog(
+                  conflict: conflict,
+                  reviewExisting: true,
+                ),
+              ) ??
+              const DuplicateImportDecision(DuplicateImportAction.cancel);
+        },
+      );
+      if (plan == null || !mounted) return;
+      if (plan.deletedIds.isNotEmpty) {
+        await widget.history.deleteMany(plan.deletedIds);
+        _reloadEntries();
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            plan.duplicateGroups == 0
+                ? 'No duplicate VINs found in saved posters.'
+                : 'Reviewed ${plan.duplicateGroups} duplicate VIN groups. '
+                      'Removed ${plan.deletedIds.length} duplicate entries.',
+          ),
+        ),
+      );
+    } catch (error) {
+      _showError('Could not review VIN duplicates: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _open(PosterHistoryEntry entry) async {
@@ -909,16 +956,35 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         const SizedBox(height: 14),
                         _toolbar(wide),
                         const SizedBox(height: 14),
-                        OutlinedButton.icon(
-                          key: const ValueKey('history-generate-posters'),
-                          onPressed: _busy || filtered.isEmpty
-                              ? null
-                              : () => _generatePosters(filtered),
-                          icon: const Icon(
-                            Icons.collections_outlined,
-                            size: 18,
-                          ),
-                          label: const Text('Generate posters · JPG / PDF'),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton.icon(
+                              key: const ValueKey('history-generate-posters'),
+                              onPressed: _busy || filtered.isEmpty
+                                  ? null
+                                  : () => _generatePosters(filtered),
+                              icon: const Icon(
+                                Icons.collections_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Generate posters · JPG / PDF'),
+                            ),
+                            OutlinedButton.icon(
+                              key: const ValueKey(
+                                'history-find-vin-duplicates',
+                              ),
+                              onPressed: _busy || entries.isEmpty
+                                  ? null
+                                  : _reviewDuplicates,
+                              icon: const Icon(
+                                Icons.find_in_page_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Find VIN duplicates'),
+                            ),
+                          ],
                         ),
                         if (_busy)
                           const Padding(

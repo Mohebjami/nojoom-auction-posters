@@ -53,8 +53,9 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(
           find.text(switch (action) {
-            DuplicateImportAction.replace => 'Replace',
-            DuplicateImportAction.skip => 'Skip',
+            DuplicateImportAction.keepBoth => 'Keep both',
+            DuplicateImportAction.replace => 'Replace with new',
+            DuplicateImportAction.skip => 'Keep previous',
             DuplicateImportAction.cancel => 'Cancel import',
           }),
         );

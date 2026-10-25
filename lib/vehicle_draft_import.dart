@@ -1,7 +1,10 @@
 import 'poster.dart';
 import 'poster_history.dart';
 
-enum DuplicateImportAction { replace, skip, cancel }
+enum DuplicateImportAction { keepBoth, replace, skip, cancel }
+
+/// Empty VINs are never an identity; lot numbers may be reused by other cars.
+String normalizedVehicleVin(String vin) => vin.trim().toUpperCase();
 
 class DuplicateImportDecision {
   final DuplicateImportAction action;
@@ -55,15 +58,12 @@ class VehicleDraftImportPlan {
   static Future<VehicleDraftImportPlan?> prepare({
     required List<VehicleDetails> vehicles,
     required List<PosterHistoryEntry> existing,
-    DateTime? importedAt,
     required Future<DuplicateImportDecision> Function(VehicleImportConflict)
     resolveDuplicate,
   }) async {
-    final importDate = (importedAt ?? DateTime.now()).toLocal();
     final targets = [
       for (final entry in existing)
-        if (_sameDate(entry.labelDate.toLocal(), importDate))
-          VehicleImportMatch(id: entry.id, vehicle: entry.vehicle),
+        VehicleImportMatch(id: entry.id, vehicle: entry.vehicle),
     ];
     final changed = <int>{};
     var added = 0;
@@ -73,10 +73,12 @@ class VehicleDraftImportPlan {
 
     for (var row = 0; row < vehicles.length; row++) {
       final incoming = vehicles[row];
-      final keys = _identityKeys(incoming);
+      final vin = normalizedVehicleVin(incoming.vin);
       final indices = [
         for (var index = 0; index < targets.length; index++)
-          if (_identityKeys(targets[index].vehicle).any(keys.contains)) index,
+          if (vin.isNotEmpty &&
+              normalizedVehicleVin(targets[index].vehicle.vin) == vin)
+            index,
       ];
       if (indices.isEmpty) {
         changed.add(targets.length);
@@ -88,7 +90,7 @@ class VehicleDraftImportPlan {
       // An ambiguous match must still be reviewed when replacing all.
       final decision =
           remainingAction != null &&
-              (remainingAction == DuplicateImportAction.skip ||
+              (remainingAction != DuplicateImportAction.replace ||
                   indices.length == 1)
           ? DuplicateImportDecision(remainingAction)
           : await resolveDuplicate(
@@ -102,6 +104,12 @@ class VehicleDraftImportPlan {
       if (decision.applyToRemaining) remainingAction = decision.action;
       if (decision.action == DuplicateImportAction.skip) {
         skipped++;
+        continue;
+      }
+      if (decision.action == DuplicateImportAction.keepBoth) {
+        changed.add(targets.length);
+        targets.add(VehicleImportMatch(vehicle: incoming, importRow: row + 1));
+        added++;
         continue;
       }
 
@@ -124,17 +132,5 @@ class VehicleDraftImportPlan {
       replacedCount: replaced,
       skippedCount: skipped,
     );
-  }
-
-  static bool _sameDate(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
-  static Set<String> _identityKeys(VehicleDetails vehicle) {
-    final vin = vehicle.vin.trim().toUpperCase();
-    final number = vehicle.number.trim().toLowerCase();
-    return {
-      if (vin.isNotEmpty) 'vin:$vin',
-      if (number.isNotEmpty) 'number:$number',
-    };
   }
 }

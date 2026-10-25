@@ -629,7 +629,6 @@ class _EditorScreenState extends State<EditorScreen> {
       final importedAt = DateTime.now();
       final plan = await VehicleDraftImportPlan.prepare(
         vehicles: vehicles,
-        importedAt: importedAt,
         existing: await _history.list(),
         resolveDuplicate: (conflict) async {
           if (!mounted) {

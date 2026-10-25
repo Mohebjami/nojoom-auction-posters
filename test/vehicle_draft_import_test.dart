@@ -20,79 +20,88 @@ void main() {
   Future<int> save(VehicleDetails vehicle) =>
       history.save(vehicle, [null, null, null, null]);
 
-  test(
-    'same vehicle on another import date creates a separate draft',
-    () async {
-      const vehicle = VehicleDetails(number: '1', vin: 'ABC', model: 'Prius');
-      final firstDate = DateTime(2025, 1, 2, 23, 59);
-      final nextDate = DateTime(2025, 1, 3, 0, 1);
-      await history.importVehicleDetails([
-        (id: null, vehicle: vehicle),
-      ], importedAt: firstDate);
-      final first = (await history.list()).single;
-      final plan = (await VehicleDraftImportPlan.prepare(
-        vehicles: const [vehicle],
-        existing: await history.list(),
-        importedAt: nextDate,
-        resolveDuplicate: (_) async => throw StateError('Different day is new'),
-      ))!;
-      expect(plan.addedCount, 1);
-      expect(plan.replacedCount, 0);
-      expect(plan.drafts.single.id, isNull);
-      await history.importVehicleDetails(plan.drafts, importedAt: nextDate);
-      final entries = await history.list();
-      expect(entries, hasLength(2));
-      expect(
-        entries.firstWhere((entry) => entry.id == first.id).labelDate,
-        firstDate.toUtc(),
-      );
-      expect(
-        entries.firstWhere((entry) => entry.id != first.id).labelDate,
-        nextDate.toUtc(),
-      );
+  test('VIN duplicates are found across import dates', () async {
+    const vehicle = VehicleDetails(number: '1', vin: 'ABC', model: 'Prius');
+    final firstDate = DateTime(2025, 1, 2, 23, 59);
+    await history.importVehicleDetails([
+      (id: null, vehicle: vehicle),
+    ], importedAt: firstDate);
+    final first = (await history.list()).single;
+    var conflicts = 0;
+    final plan = (await VehicleDraftImportPlan.prepare(
+      vehicles: const [
+        VehicleDetails(number: '2', vin: ' abc ', price: '9000'),
+      ],
+      existing: await history.list(),
+      resolveDuplicate: (conflict) async {
+        conflicts++;
+        expect(conflict.matches.single.id, first.id);
+        return const DuplicateImportDecision(DuplicateImportAction.replace);
+      },
+    ))!;
+    expect(conflicts, 1);
+    expect(plan.addedCount, 0);
+    expect(plan.replacedCount, 1);
+    await history.importVehicleDetails(
+      plan.drafts,
+      importedAt: DateTime(2025, 1, 3),
+    );
+    expect(await history.list(), hasLength(1));
+    expect((await history.load(first.id)).vehicle.price, '9000');
+  });
 
-      var conflicts = 0;
-      final repeated = (await VehicleDraftImportPlan.prepare(
-        vehicles: const [vehicle],
-        existing: entries,
-        importedAt: DateTime(2025, 1, 3, 18),
-        resolveDuplicate: (conflict) async {
-          conflicts++;
-          expect(conflict.matches, hasLength(1));
-          expect(conflict.matches.single.id, isNot(first.id));
-          return const DuplicateImportDecision(DuplicateImportAction.skip);
+  test(
+    'keep both all retains saved entries and repeated incoming VINs',
+    () async {
+      final id = await save(
+        const VehicleDetails(number: '1', vin: 'ABC', price: '6000'),
+      );
+      var prompts = 0;
+      final plan = (await VehicleDraftImportPlan.prepare(
+        vehicles: const [
+          VehicleDetails(number: '2', vin: 'abc', price: '7000'),
+          VehicleDetails(number: '3', vin: 'ABC', price: '8000'),
+        ],
+        existing: await history.list(),
+        resolveDuplicate: (_) async {
+          prompts++;
+          return const DuplicateImportDecision(
+            DuplicateImportAction.keepBoth,
+            applyToRemaining: true,
+          );
         },
       ))!;
-      expect(conflicts, 1);
-      expect(repeated.skippedCount, 1);
-      expect(repeated.drafts, isEmpty);
+      expect(prompts, 1);
+      expect(plan.addedCount, 2);
+      expect(plan.replacedCount, 0);
+      expect(plan.drafts.every((draft) => draft.id == null), isTrue);
+      await history.importVehicleDetails(plan.drafts);
+      expect(await history.list(), hasLength(3));
+      expect((await history.load(id)).vehicle.price, '6000');
     },
   );
 
-  test('repeated rows within a new-day import are still duplicates', () async {
-    const vehicle = VehicleDetails(number: '1', vin: 'ABC');
-    await history.importVehicleDetails([
-      (id: null, vehicle: vehicle),
-    ], importedAt: DateTime(2025, 1, 2));
-    var conflicts = 0;
+  test('repeated VINs within the spreadsheet prompt before saving', () async {
+    var prompts = 0;
     final plan = (await VehicleDraftImportPlan.prepare(
-      vehicles: const [vehicle, vehicle],
-      existing: await history.list(),
-      importedAt: DateTime(2025, 1, 3),
+      vehicles: const [
+        VehicleDetails(number: '1', vin: 'ABC'),
+        VehicleDetails(number: '2', vin: 'abc'),
+      ],
+      existing: [],
       resolveDuplicate: (conflict) async {
-        conflicts++;
-        expect(conflict.matches.single.id, isNull);
+        prompts++;
         expect(conflict.matches.single.importRow, 1);
         return const DuplicateImportDecision(DuplicateImportAction.skip);
       },
     ))!;
-    expect(conflicts, 1);
+    expect(prompts, 1);
     expect(plan.addedCount, 1);
     expect(plan.skippedCount, 1);
   });
 
   test(
-    'matches VIN or number without case or surrounding whitespace',
+    'matches normalized VINs and allows reused numbers and blank VINs',
     () async {
       final vinId = await save(const VehicleDetails(number: '1', vin: 'ABC'));
       final numberId = await save(const VehicleDetails(number: 'LOT-A'));
@@ -112,13 +121,13 @@ void main() {
         },
       ))!;
 
-      expect(seen.map((c) => c.matches.single.id), [vinId, numberId]);
-      expect(plan.addedCount, 3);
-      expect(plan.replacedCount, 2);
+      expect(seen.map((c) => c.matches.single.id), [vinId]);
+      expect(plan.addedCount, 4);
+      expect(plan.replacedCount, 1);
       await history.importVehicleDetails(plan.drafts);
-      expect(await history.list(), hasLength(5));
+      expect(await history.list(), hasLength(6));
       expect((await history.load(vinId)).vehicle.price, '9000');
-      expect((await history.load(numberId)).vehicle.color, 'Blue');
+      expect((await history.load(numberId)).vehicle.color, isEmpty);
     },
   );
 
@@ -164,7 +173,7 @@ void main() {
     var prompts = 0;
     final plan = (await VehicleDraftImportPlan.prepare(
       vehicles: const [
-        VehicleDetails(number: '1', vin: 'SKIPPED', price: '7000'),
+        VehicleDetails(number: '1', vin: ' abc ', price: '7000'),
         VehicleDetails(number: '1', vin: 'ABC', price: '8000'),
         VehicleDetails(number: '2', vin: 'SKIPPED'),
       ],
@@ -192,10 +201,10 @@ void main() {
     final plan = (await VehicleDraftImportPlan.prepare(
       vehicles: const [
         VehicleDetails(number: '1', vin: 'ABC', price: '6000'),
-        VehicleDetails(number: '1', vin: 'DEF', price: '7000'),
-        VehicleDetails(number: '2', vin: 'DEF', price: '8000'),
-        // The old VIN is no longer a duplicate after replacement.
-        VehicleDetails(number: '3', vin: 'ABC'),
+        VehicleDetails(number: '2', vin: 'ABC', price: '7000'),
+        VehicleDetails(number: '3', vin: 'ABC', price: '8000'),
+        // Reusing a lot number with a different VIN is a new vehicle.
+        VehicleDetails(number: '3', vin: 'DEF'),
       ],
       existing: [],
       resolveDuplicate: (conflict) async {
@@ -221,12 +230,12 @@ void main() {
     'ambiguous replacements still ask which saved entry to update',
     () async {
       final first = await save(const VehicleDetails(number: '1', vin: 'AAA'));
-      final second = await save(const VehicleDetails(number: '2', vin: 'BBB'));
+      final second = await save(const VehicleDetails(number: '2', vin: 'AAA'));
       var prompts = 0;
       final plan = (await VehicleDraftImportPlan.prepare(
         vehicles: const [
           VehicleDetails(number: '1', vin: 'AAA', price: '7000'),
-          VehicleDetails(number: '1', vin: 'BBB', price: '8000'),
+          VehicleDetails(number: '1', vin: 'AAA', price: '8000'),
         ],
         existing: await history.list(),
         resolveDuplicate: (conflict) async {
@@ -234,7 +243,7 @@ void main() {
           return DuplicateImportDecision(
             DuplicateImportAction.replace,
             matchIndex: prompts == 1
-                ? 0
+                ? conflict.matches.indexWhere((match) => match.id == first)
                 : conflict.matches.indexWhere((match) => match.id == second),
             applyToRemaining: true,
           );
@@ -248,13 +257,15 @@ void main() {
   );
 
   test('cancel discards new rows and earlier replacement decisions', () async {
-    final id = await save(const VehicleDetails(number: '1', price: '6000'));
+    final id = await save(
+      const VehicleDetails(number: '1', vin: 'ABC', price: '6000'),
+    );
     var prompts = 0;
     final plan = await VehicleDraftImportPlan.prepare(
       vehicles: const [
         VehicleDetails(number: '2'),
-        VehicleDetails(number: '1', price: '7000'),
-        VehicleDetails(number: '1', price: '8000'),
+        VehicleDetails(number: '1', vin: 'ABC', price: '7000'),
+        VehicleDetails(number: '1', vin: 'ABC', price: '8000'),
       ],
       existing: await history.list(),
       resolveDuplicate: (_) async => DuplicateImportDecision(
@@ -269,11 +280,16 @@ void main() {
   });
 
   test('failed import rolls back all writes if a target disappeared', () async {
-    final id = await save(const VehicleDetails(number: '1', price: '6000'));
+    final id = await save(
+      const VehicleDetails(number: '1', vin: 'ABC', price: '6000'),
+    );
     await expectLater(
       history.importVehicleDetails([
         (id: null, vehicle: const VehicleDetails(number: '2')),
-        (id: id, vehicle: const VehicleDetails(number: '1', price: '7000')),
+        (
+          id: id,
+          vehicle: const VehicleDetails(number: '1', vin: 'ABC', price: '7000'),
+        ),
         (id: id + 100, vehicle: const VehicleDetails(number: '3')),
       ]),
       throwsStateError,

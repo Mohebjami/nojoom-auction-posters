@@ -20,7 +20,12 @@ Future<void> _settleStorage(WidgetTester tester) async {
 }
 
 void main() {
-  for (final action in ['Replace', 'Skip', 'Cancel import']) {
+  for (final action in [
+    'Replace with new',
+    'Keep previous',
+    'Keep both',
+    'Cancel import',
+  ]) {
     testWidgets('Excel import handles $action before saving any rows', (
       tester,
     ) async {
@@ -97,8 +102,20 @@ void main() {
       expect(find.text('Duplicate vehicle found'), findsNothing);
       final entries = (await tester.runAsync(history.list))!;
       final saved = (await tester.runAsync(() => history.load(id)))!;
-      expect(entries, hasLength(action == 'Cancel import' ? 1 : 2));
-      expect(saved.vehicle.price, action == 'Replace' ? '8000' : '6000');
+      expect(
+        entries,
+        hasLength(
+          action == 'Cancel import'
+              ? 1
+              : action == 'Keep both'
+              ? 4
+              : 2,
+        ),
+      );
+      expect(
+        saved.vehicle.price,
+        action == 'Replace with new' ? '8000' : '6000',
+      );
       expect(saved.templateName, 'Saved template');
       expect(openedHistory, action != 'Cancel import');
       expect(tester.takeException(), isNull);

@@ -5,8 +5,13 @@ import 'vehicle_draft_import.dart';
 
 class DuplicateVehicleDialog extends StatefulWidget {
   final VehicleImportConflict conflict;
+  final bool reviewExisting;
 
-  const DuplicateVehicleDialog({super.key, required this.conflict});
+  const DuplicateVehicleDialog({
+    super.key,
+    required this.conflict,
+    this.reviewExisting = false,
+  });
 
   @override
   State<DuplicateVehicleDialog> createState() => _DuplicateVehicleDialogState();
@@ -46,15 +51,21 @@ class _DuplicateVehicleDialogState extends State<DuplicateVehicleDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('This VIN or vehicle number is already in the list.'),
+              Text(
+                widget.reviewExisting
+                    ? '${conflict.matches.length + 1} saved entries share this VIN.'
+                    : 'This VIN is already in the list.',
+              ),
               const SizedBox(height: 16),
               Text(
-                'Incoming data row ${conflict.importRow}',
+                widget.reviewExisting
+                    ? 'Newest saved entry'
+                    : 'Incoming data row ${conflict.importRow}',
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               Text(_describe(conflict.incoming)),
               const SizedBox(height: 16),
-              if (conflict.matches.length > 1) ...[
+              if (!widget.reviewExisting && conflict.matches.length > 1) ...[
                 const Text('Multiple entries match. Choose which to replace:'),
                 DropdownButton<int>(
                   value: _matchIndex,
@@ -73,16 +84,24 @@ class _DuplicateVehicleDialogState extends State<DuplicateVehicleDialog> {
                 ),
               ],
               Text(
-                match.id == null
+                widget.reviewExisting
+                    ? 'Previous entry (oldest saved)'
+                    : match.id == null
                     ? 'Earlier imported data row ${match.importRow}'
                     : 'Existing saved draft',
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               Text(_describe(match.vehicle)),
               const SizedBox(height: 16),
-              const Text(
-                'Replace updates the details and keeps saved photos and the '
-                'template. Skip keeps the existing entry.',
+              Text(
+                widget.reviewExisting
+                    ? 'Keep previous retains the oldest entry. Replace with new '
+                          'retains the newest entry. Other entries with this VIN '
+                          'and their photos will be deleted. Keep both retains '
+                          'all entries with this VIN.'
+                    : 'Replace with new updates the selected entry and keeps '
+                          'its saved photos and template. Keep previous skips '
+                          'this incoming row. Keep both adds a separate draft.',
               ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
@@ -99,15 +118,21 @@ class _DuplicateVehicleDialogState extends State<DuplicateVehicleDialog> {
       actions: [
         TextButton(
           onPressed: () => _choose(DuplicateImportAction.cancel),
-          child: const Text('Cancel import'),
+          child: Text(
+            widget.reviewExisting ? 'Cancel review' : 'Cancel import',
+          ),
+        ),
+        OutlinedButton(
+          onPressed: () => _choose(DuplicateImportAction.keepBoth),
+          child: const Text('Keep both'),
         ),
         OutlinedButton(
           onPressed: () => _choose(DuplicateImportAction.skip),
-          child: const Text('Skip'),
+          child: const Text('Keep previous'),
         ),
         FilledButton(
           onPressed: () => _choose(DuplicateImportAction.replace),
-          child: const Text('Replace'),
+          child: const Text('Replace with new'),
         ),
       ],
     );
