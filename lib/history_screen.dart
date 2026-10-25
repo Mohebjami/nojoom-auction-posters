@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'auction_vehicles_screen.dart';
 import 'batch_posters_screen.dart';
+import 'backup_screen.dart';
 import 'duplicate_vehicle_dialog.dart';
 import 'poster_history.dart';
 import 'studio_ui.dart';
@@ -19,6 +20,7 @@ class HistoryScreen extends StatefulWidget {
   final VoidCallback? onSelectEditor;
   final Future<void> Function(PosterDraft draft)? onDraftSelected;
   final Listenable? refreshSignal;
+  final VoidCallback? onBackupImported;
 
   const HistoryScreen({
     super.key,
@@ -27,6 +29,7 @@ class HistoryScreen extends StatefulWidget {
     this.onSelectEditor,
     this.onDraftSelected,
     this.refreshSignal,
+    this.onBackupImported,
   });
 
   @override
@@ -78,6 +81,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _thumbnails.clear();
       _entries = widget.history.list();
     });
+  }
+
+  Future<void> _manageBackup() async {
+    if (_busy) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BackupScreen(
+          history: widget.history,
+          onImported: () {
+            _reloadEntries();
+            widget.onBackupImported?.call();
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _reviewDuplicates() async {
@@ -558,8 +577,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
         fillColor: Colors.white,
       ),
     );
-    final controls = Row(
-      mainAxisSize: MainAxisSize.min,
+    final controls = Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 4,
+      runSpacing: 4,
       children: [
         DropdownButtonHideUnderline(
           child: DropdownButton<_HistorySort>(
@@ -591,7 +613,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
             onChanged: (value) => setState(() => _sort = value!),
           ),
         ),
-        const SizedBox(width: 12),
         IconButton(
           tooltip: 'Grid view',
           isSelected: _grid,
@@ -868,10 +889,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const StudioHeading(
+                        StudioHeading(
                           title: 'Good work.\nAll in one place.',
                           subtitle:
                               'Revisit, refine, and make your next impression.',
+                          trailing: IconButton.filledTonal(
+                            key: const ValueKey('history-backup'),
+                            tooltip: 'Backup and restore',
+                            onPressed: _busy ? null : _manageBackup,
+                            icon: const Icon(Icons.backup_outlined),
+                          ),
                         ),
                         const SizedBox(height: 26),
                         Row(
@@ -907,15 +934,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         const SizedBox(height: 28),
                         Row(
                           children: [
-                            const Text(
-                              'Your collection',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -.5,
+                            const Expanded(
+                              child: Text(
+                                'Your collection',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: -.5,
+                                ),
                               ),
                             ),
-                            const Spacer(),
                             Text(
                               '${filtered.length} posters',
                               style: const TextStyle(

@@ -14,6 +14,16 @@ void main() {
     expect(VehicleBrand.fromModel('Priuslike'), isEmpty);
   });
 
+  test('Corolla S Class is Toyota while standalone classes remain Mercedes', () {
+    for (final model in ['Corolla S Class', 'COROLLA S-CLASS', 'CROLLA S CLASS']) {
+      expect(VehicleBrand.fromModel(model), 'TOYOTA');
+      expect(VehicleBrand.complete('2013', model), 'TOYOTA 2013');
+    }
+    for (final model in ['S Class', 'S-Class', 'C Class', 'E-Class']) {
+      expect(VehicleBrand.fromModel(model), 'MERCEDES-BENZ');
+    }
+  });
+
   testWidgets('manual model entry fills brand and preserves manual overrides', (
     tester,
   ) async {

@@ -1,10 +1,14 @@
 /// Local recognition keeps imports and manual entry available offline.
 class VehicleBrand {
   static final yearPattern = RegExp(r'\b(?:19|20)\d{2}\b');
+  static final _mercedesClassPattern = RegExp(
+    r'\b[abcegs][ -]?class\b',
+    caseSensitive: false,
+  );
 
   static final _brands = <String, RegExp>{
     'MERCEDES-BENZ': RegExp(
-      r'\b(?:mercedes(?:[ -]?benz)?|benz|[abcegs][ -]?class|[abcegs][ -]?\d{3}|(?:cla|cls|gla|glb|glc|gle|gls|slk|slc)[ -]?\d{0,3})\b|بنز',
+      r'\b(?:mercedes(?:[ -]?benz)?|benz|[abcegs][ -]?\d{3}|(?:cla|cls|gla|glb|glc|gle|gls|slk|slc)[ -]?\d{0,3})\b|بنز',
       caseSensitive: false,
     ),
     'LEXUS': RegExp(r'\blexus\b|لکسیز|لکسوس', caseSensitive: false),
@@ -32,6 +36,8 @@ class VehicleBrand {
     for (final entry in _brands.entries) {
       if (entry.value.hasMatch(model)) return entry.key;
     }
+    // A known model takes priority over an ambiguous trim such as "S Class".
+    if (_mercedesClassPattern.hasMatch(model)) return 'MERCEDES-BENZ';
     return '';
   }
 

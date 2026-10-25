@@ -62,7 +62,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   final _historyRefresh = ValueNotifier<int>(0);
   late final PosterHistory _history;
   late final Widget _editorPage;
-  late final Widget _auctionPage;
+  late Widget _auctionPage;
   late Widget _labelsPage;
   late final Widget _historyPage;
   var _active = _WorkspaceTab.create;
@@ -88,6 +88,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       refreshSignal: _historyRefresh,
       onSelectEditor: () => _showTab(_WorkspaceTab.create),
       onDraftSelected: _openDraft,
+      onBackupImported: _backupImported,
     );
   }
 
@@ -140,6 +141,18 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   Future<void> _openDraft(PosterDraft draft) async {
     await _editorKey.currentState?._loadDraft(draft);
     if (mounted) _showTab(_WorkspaceTab.create);
+  }
+
+  void _backupImported() {
+    if (!mounted) return;
+    setState(() {
+      _auctionPage = AuctionVehiclesScreen(
+        key: UniqueKey(),
+        history: _history,
+        embedded: true,
+      );
+      _labelsPage = VehiclesLabelScreen(key: UniqueKey(), history: _history);
+    });
   }
 
   @override

@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:sembast/sembast.dart';
+import 'package:flutter/foundation.dart' show compute;
 
 import 'auction_vehicle.dart';
 import 'poster.dart';
+import 'poster_backup.dart';
 import 'storage/database_native.dart'
     if (dart.library.js_interop) 'storage/database_web.dart';
 
@@ -83,6 +85,51 @@ class PosterHistory {
       _database = null; // Allow retry after a temporary storage failure.
       rethrow;
     }
+  }
+
+  /// Read all stores together, including photos and saved custom templates.
+  Future<Uint8List> exportBackup() async {
+    final db = await _db;
+    final data = await db.transaction((txn) async {
+      final entries = await _entries.find(txn);
+      final photos = {
+        for (final record in await _photos.find(txn)) record.key: record.value,
+      };
+      final auctionVehicles = await _auctionVehicles.find(txn);
+      return <String, Object?>{
+        'format': PosterBackup.format,
+        'version': PosterBackup.version,
+        'createdAt': DateTime.now().toUtc().toIso8601String(),
+        'posters': [
+          for (final entry in entries)
+            {'entry': entry.value, 'photos': photos[entry.key]?['slots']},
+        ],
+        'auctionVehicles': [for (final entry in auctionVehicles) entry.value],
+      };
+    });
+    return compute(_encodeBackup, data);
+  }
+
+  static Uint8List _encodeBackup(Map<String, Object?> data) =>
+      PosterBackup.encode(PosterBackup.fromJson(data));
+
+  /// Append under new IDs in one transaction; existing records stay intact.
+  Future<void> importBackup(PosterBackup backup) async {
+    // Revalidate in case callers changed the preview data before committing.
+    final validated = await compute(PosterBackup.fromJson, backup.toJson());
+    final db = await _db;
+    await db.transaction((txn) async {
+      for (final poster in validated.posters) {
+        final id = await _entries.add(
+          txn,
+          Map<String, Object?>.from(poster['entry'] as Map),
+        );
+        await _photos.record(id).put(txn, {'slots': poster['photos']});
+      }
+      for (final entry in validated.auctionVehicles) {
+        await _auctionVehicles.add(txn, entry);
+      }
+    });
   }
 
   Future<List<PosterHistoryEntry>> list() async {

@@ -8,6 +8,7 @@ A Flutter app for creating polished vehicle sale posters from up to four photos 
 - Editable title, model, USD price, color, VIN, and top-left reference number.
 - Responsive editor with a two-column desktop layout and a scrollable mobile layout.
 - Persistent local history for saving drafts, reopening posters, editing entries, and deleting projects.
+- Portable ZIP backup and import of all saved posters, original photos, custom templates, dates, and auction-list data.
 - JPG export at 1621 × 1987 pixels, plus PNG and self-contained SVG export.
 - Batch generation of saved vehicles as separate JPGs in a ZIP, or a single PDF with one complete poster per page.
 - Native gallery saving and sharing on supported platforms, with browser downloads on the web.
@@ -52,6 +53,19 @@ progress and can be cancelled before saving. Desktop opens a save dialog, web
 downloads the file, and mobile opens the share sheet.
 
 History is stored locally on the device, or in the browser profile and site address on the web. There is no account or cross-device synchronization. Uninstalling the app or clearing browser storage removes local history.
+
+Use **History → Backup and restore → Export backup** to save all stored data,
+including every photo slot, custom poster templates, original dates, new/old
+sections, and the full auction list. Save your current edits first. Desktop
+opens a save dialog, web downloads a ZIP, and mobile opens the share sheet so
+you can save or send the file. Keep the ZIP intact.
+
+On another device or app version that supports backups, open **History →
+Backup and restore → Import backup**, choose the ZIP, review the counts, and
+confirm. Import adds copies under new IDs and keeps existing data. Importing
+the same ZIP more than once creates duplicates. Validation happens before any
+writes and import commits all data together. Unsupported newer backup formats
+ask you to update the receiving app.
 
 Excel and CSV imports check VINs against all saved drafts and earlier rows in
 the file, ignoring case and surrounding spaces. For each duplicate, choose
