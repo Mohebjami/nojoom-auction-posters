@@ -4,7 +4,8 @@ import 'poster_history.dart';
 enum DuplicateImportAction { keepBoth, replace, skip, cancel }
 
 /// Empty VINs are never an identity; lot numbers may be reused by other cars.
-String normalizedVehicleVin(String vin) => vin.trim().toUpperCase();
+String normalizedVehicleVin(String vin) =>
+    vin.replaceAll(RegExp(r'\s'), '').toUpperCase();
 
 class DuplicateImportDecision {
   final DuplicateImportAction action;

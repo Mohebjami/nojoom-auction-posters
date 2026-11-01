@@ -28,15 +28,37 @@ For the complete photo-to-poster workflow:
 1. In **Photo Finder**, choose the Excel workbook and photo destination.
 2. Choose **Import list into poster drafts**; review any duplicate VINs.
 3. Choose the photo source, sign in to NCA if needed, then **Download photos**.
-4. Choose **Use photos in posters**. Up to four verified images are normalized
-   and added to empty photo slots on saved posters with the exact matching VIN.
+4. As each vehicle finishes downloading, photos attach automatically to saved
+   posters with the exact matching VIN, in **Front, Interior, Side, Rear** order.
    Existing photos, templates, vehicle fields and original dates are retained.
-5. Open **History** to review and generate posters.
+   **Use photos in posters** can retry attachment if needed.
+5. Open **History** to review and generate posters. Blank slots show a flag and
+   their missing view; select those images manually. Search by **VIN** or **No.**
+   to reveal matching posters without opening their date folders first.
 6. In **NCA Import**, choose **Use Photo Finder workbook** (or a different
    Excel/CSV file), validate the prices, enter the auction URL and credentials,
    then preview the forms. **Publish to NCA** shows the auction and vehicle
    count for confirmation before changing the live site. Re-enter your password
    for each run; passwords are not saved.
+
+To download one vehicle without a workbook, choose a destination, enter its VIN
+under **Find images for one vehicle**, optionally enter its No., then choose
+**Find and download this vehicle**. An existing row's menu also offers
+**Find images for this vehicle**, leaving the rest of the list untouched.
+
+Angle recognition uses explicit gallery descriptions when present and a local
+CLIP model through [Transformers.js](https://huggingface.co/docs/transformers.js/api/pipelines)
+for unlabelled images. The first use downloads the model into
+`automation/photo-view-model/`; subsequent runs reuse it. Vehicle photos are
+processed locally. Low-confidence, ambiguous, missing, and duplicate views stay
+blank. If model setup is unavailable, downloads still complete and unidentified
+views are flagged for manual selection. Recognition results are cached in each
+VIN folder's `photos.json` alongside the verified image hashes.
+
+**Print** and **Print all labels** produce one label per A4 page, stretched to
+the complete page width and height with zero PDF margins. Select A4 paper and
+borderless printing in the printer settings if supported; a printer's physical
+unprintable border cannot be removed by the PDF.
 
 Automation runs locally in a bundled Electron helper started by the Flutter
 app. Its API listens only on the loopback interface, requires a fresh random

@@ -1,7 +1,9 @@
 const { dialog, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { readWorkbook } = require('./photo-finder/workbook.cjs');
+const { readWorkbook, normalizeVIN, VIN_PATTERN } = require('./photo-finder/workbook.cjs');
+const { selectPosterPhotos, photoView, photoDescription } = require('./photo-finder/photo-views.cjs');
+const { createViewRecognizer, VERSION: RECOGNITION_VERSION } = require('./photo-finder/view-recognition.cjs');
 const { BidCarsBrowser, isBidCars } = require('./photo-finder/bidcars.cjs');
 const { NCABrowser, isNCAListing } = require('./photo-finder/nca.cjs');
 const { MODES, lookupSources } = require('./photo-finder/sources.cjs');
@@ -9,7 +11,7 @@ const { openDestination, saveManifest, downloadPhoto } = require('./photo-finder
 const { toCSV, notFoundReport } = require('./photo-finder/reports.cjs');
 
 
-function createPhotoService({runtimePath,onChange=()=>{}}) {
+function createPhotoService({runtimePath,onChange=()=>{},browsers,recognizer}) {
 let browser, nca, controller, pendingHelp;
 let starting = false;
 let settings = {};
@@ -21,6 +23,7 @@ const state = {
 };
 const notify = () => onChange();
 const activity = message => { state.activity = message; notify(); };
+recognizer ||= createViewRecognizer({runtimePath, onMessage: activity});
 function requestHelp(message) {
   state.help = message;
   notify();
@@ -63,12 +66,13 @@ function delay(ms, signal) {
     if (signal.aborted) onAbort();
   });
 }
-async function runBatch(mode) {
-  const rows = state.vehicles.filter(v => v.status !== 'invalid' && (mode !== 'retry' || ['error', 'partial', 'not_found', 'skipped', 'stopped'].includes(v.status)));
+async function runBatch(mode, id) {
+  const rows = state.vehicles.filter(v => v.status !== 'invalid' && (mode !== 'single' || v.id === id) && (mode !== 'retry' || ['error', 'partial', 'not_found', 'skipped', 'stopped'].includes(v.status)));
   if (!rows.length) throw new Error('There are no vehicles to process.');
   const stat = await fs.stat(state.output).catch(() => null);
   if (!stat?.isDirectory()) throw new Error('Choose an existing destination folder first.');
   await fs.access(state.output, require('node:fs').constants.W_OK);
+  recognizer.retry?.();
   state.running = true;
   state.startedAt = new Date().toISOString();
   state.finishedAt = null;
@@ -77,7 +81,7 @@ async function runBatch(mode) {
   browser.signal = signal;
   nca.signal = signal;
   for (const row of rows) {
-    row.status = 'queued'; row.message = ''; row.count = 0; row.source = '';
+    row.status = 'queued'; row.message = ''; row.count = 0; row.source = ''; row.missingViews = [];
   }
   notify();
   // The job runs independently; IPC returns immediately so Stop and Continue remain usable.
@@ -116,7 +120,12 @@ async function runBatch(mode) {
                 if (attempt === 0) await delay(1000, signal);
               }
             }
-            if (saved) files.add(saved.file);
+            if (saved) {
+              files.add(saved.file);
+              const item = destination.manifest.photos.find(p => p.url === listing.images[i]);
+              if (item) item.description = [...new Set([item.description, listing.imageDescriptions?.[listing.images[i]]].filter(Boolean))].join(' ').slice(0, 1000);
+              await saveManifest(destination);
+            }
             else failures.push({ url: listing.images[i], error: error.message });
             row.count = files.size;
             row.message = `${files.size} photos saved${failures.length ? ` · ${failures.length} failed` : ''}`;
@@ -126,11 +135,33 @@ async function runBatch(mode) {
           destination.manifest.complete = failures.length === 0;
           destination.manifest.failures = failures;
           await saveManifest(destination);
+          const { verifiedFile } = require('./photo-finder/downloads.cjs');
+          row.status = 'classifying';
+          row.message = 'Identifying Front, Interior, Side and Rear views…';
+          notify();
+          const classified = new Map();
+          for (const item of destination.manifest.photos) {
+            signal.throwIfAborted();
+            if (photoView(photoDescription(item.url, item.description)) || item.classification?.version === RECOGNITION_VERSION) continue;
+            if (!await verifiedFile(destination.directory, item)) continue;
+            activity(`${row.vin} · identifying photo views locally…`);
+            if (!classified.has(item.sha256)) classified.set(item.sha256, await recognizer.classify(path.join(destination.directory, item.file), signal));
+            const result = classified.get(item.sha256);
+            if (result) {
+              item.classification = result;
+              await saveManifest(destination);
+            }
+          }
+          const selection = await selectPosterPhotos(destination, item => verifiedFile(destination.directory, item));
+          row.missingViews = selection.missingViews;
           row.status = failures.length ? (files.size ? 'partial' : 'error') : 'done';
           row.message = failures.length ? `${files.size} saved; ${failures.length} failed. ${failures[0].error}` : `${files.size} photos saved. Ready in your folder.`;
+          if (selection.missingViews.length) row.message += ` Select manually: ${selection.missingViews.join(', ')}.`;
+          if (recognizer.warning) row.message += ` ${recognizer.warning}`;
         } catch (error) {
           row.status = signal.aborted ? 'stopped' : error.code === 'NOT_FOUND' ? 'not_found' : error.code === 'SKIPPED' ? 'skipped' : 'error';
           row.message = signal.aborted ? 'Stopped. Saved photos will be reused when you retry.' : error.message;
+          row.missingViews = ['front', 'interior', 'side', 'rear'];
         }
         notify();
         if (!signal.aborted) await delay(1400, signal);
@@ -138,7 +169,7 @@ async function runBatch(mode) {
     } catch (error) {
       if (!signal.aborted) state.activity = error.message;
     } finally {
-      for (const row of rows) if (['queued', 'searching', 'downloading'].includes(row.status)) {
+      for (const row of rows) if (['queued', 'searching', 'downloading', 'classifying'].includes(row.status)) {
         row.status = 'stopped'; row.message = 'Not finished. Retry to continue.';
       }
       state.running = false;
@@ -160,8 +191,8 @@ async function runBatch(mode) {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)) settings = {};
     if (typeof settings.output === 'string') state.output = settings.output;
     if (MODES.includes(settings.sourceMode)) state.sourceMode = settings.sourceMode;
-    browser = new BidCarsBrowser({runtimePath: path.join(runtimePath, 'bidcars-session'), onMessage: activity, requestHelp, stopped: () => controller?.signal.aborted || false});
-    nca = new NCABrowser({runtimePath: path.join(runtimePath, 'nca-session'), onMessage: activity, requestHelp, stopped: () => controller?.signal.aborted || false});
+    browser = browsers?.bidcars || new BidCarsBrowser({runtimePath: path.join(runtimePath, 'bidcars-session'), onMessage: activity, requestHelp, stopped: () => controller?.signal.aborted || false});
+    nca = browsers?.nca || new NCABrowser({runtimePath: path.join(runtimePath, 'nca-session'), onMessage: activity, requestHelp, stopped: () => controller?.signal.aborted || false});
   }
   async function command(action, args = {}) {
     switch (action) {
@@ -198,10 +229,31 @@ async function runBatch(mode) {
       case 'open-nca': await nca.open(); break;
       case 'start':
         if (state.running || starting) throw new Error('A batch is already running.');
-        if (!['all','retry'].includes(args.mode)) throw new Error('Invalid batch mode.');
+        if (!['all','retry','single'].includes(args.mode)) throw new Error('Invalid batch mode.');
         starting=true;
-        try { await runBatch(args.mode); } finally { starting=false; }
+        try { await runBatch(args.mode, args.id); } finally { starting=false; }
         break;
+      case 'search-one': {
+        if (state.running || starting) throw new Error('A batch is already running.');
+        const vin = normalizeVIN(args.vin);
+        if (!VIN_PATTERN.test(vin)) throw new Error('Enter a complete 17-character VIN (excluding I, O and Q).');
+        const requestedNo = String(args.no || '').trim();
+        if (requestedNo && (!/^[0-9]+$/.test(requestedNo) || Number(requestedNo) < 1 || !Number.isSafeInteger(Number(requestedNo)))) throw new Error('No. must be a positive whole number.');
+        let row = state.vehicles.find(v => v.vin === vin && v.status !== 'invalid' && (!requestedNo || v.no === requestedNo));
+        const previousRows = [...state.vehicles];
+        if (!row) {
+          if (state.vehicles.length >= 5000) throw new Error('Please use at most 5,000 vehicles at a time.');
+          const no = requestedNo || String(Math.max(0, ...state.vehicles.map(v => Number(v.no) || 0)) + 1);
+          if (!Number.isSafeInteger(Number(no))) throw new Error('Enter a valid vehicle No.');
+          row = { id: require('node:crypto').randomUUID(), no, vin, vehicle: '', year: '', folder: `${no}. ${vin}`, status: 'ready', message: '', count: 0, source: '' };
+          state.vehicles.push(row);
+        }
+        starting = true;
+        try { await runBatch('single', row.id); }
+        catch (error) { state.vehicles = previousRows; throw error; }
+        finally { starting = false; }
+        break;
+      }
       case 'stop': stop(); break;
       case 'continue': settleHelp('continue'); break;
       case 'skip': settleHelp('skip'); break;
@@ -244,15 +296,11 @@ async function runBatch(mode) {
     if (!row?.folder || !state.output) throw new Error('No saved photos for this vehicle.');
     const {verifiedFile}=require('./photo-finder/downloads.cjs');
     const destination=await openDestination(state.output,row);
-    const photos=[];
-    const seen=new Set();
-    for (const item of destination.manifest.photos) {
-      if (seen.has(item.file) || !await verifiedFile(destination.directory,item)) continue;
-      seen.add(item.file);
-      photos.push((await fs.readFile(path.join(destination.directory,item.file))).toString('base64'));
-      if (photos.length===4) break;
-    }
-    return {vin:row.vin, photos};
+    const selection = await selectPosterPhotos(destination, async item => {
+      if (!await verifiedFile(destination.directory,item)) return null;
+      return (await fs.readFile(path.join(destination.directory,item.file))).toString('base64');
+    });
+    return {vin:row.vin, ...selection};
   }
   return {state, initialize, command, stop, posterPhotos};
 }

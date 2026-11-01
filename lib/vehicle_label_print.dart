@@ -127,29 +127,27 @@ Future<Uint8List> renderVehicleLabel(String svg) async {
   }
 }
 
-/// Fit one complete label on each sheet, using the printer's page dimensions.
+/// Fill each A4 sheet edge to edge, matching the SVG's preserveAspectRatio=none.
 Future<Uint8List> buildVehicleLabelPdf(
   List<Uint8List> labels,
   PdfPageFormat format,
 ) async {
   final pdf = PdfDocument();
   for (final bytes in labels) {
-    final page = PdfPage(pdf, pageFormat: format);
-    final image = PdfImage.file(pdf, bytes: bytes);
-    final availableWidth = format.availableWidth;
-    final availableHeight = format.availableHeight;
-    final scale = math.min(
-      availableWidth / image.width,
-      availableHeight / image.height,
+    final pageFormat = PdfPageFormat.a4.copyWith(
+      marginLeft: 0,
+      marginRight: 0,
+      marginTop: 0,
+      marginBottom: 0,
     );
-    final width = image.width * scale;
-    final height = image.height * scale;
+    final page = PdfPage(pdf, pageFormat: pageFormat);
+    final image = PdfImage.file(pdf, bytes: bytes);
     page.getGraphics().drawImage(
       image,
-      format.marginLeft + (availableWidth - width) / 2,
-      format.marginBottom + (availableHeight - height) / 2,
-      width,
-      height,
+      0,
+      0,
+      pageFormat.width,
+      pageFormat.height,
     );
   }
   return pdf.save();

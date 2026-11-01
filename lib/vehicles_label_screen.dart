@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:xml/xml.dart';
 
@@ -624,6 +625,13 @@ class _VehiclesLabelScreenState extends State<VehiclesLabelScreen> {
         if (!mounted) return;
       }
       await Printing.layoutPdf(
+        format: PdfPageFormat.a4.copyWith(
+          marginLeft: 0,
+          marginRight: 0,
+          marginTop: 0,
+          marginBottom: 0,
+        ),
+        dynamicLayout: false,
         name: entries.length == 1
             ? 'Vehicle label ${entries.single.vehicle.number}'
             : 'Vehicle labels (${entries.length})',

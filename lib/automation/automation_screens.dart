@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -83,15 +84,22 @@ class PhotoFinderScreen extends StatefulWidget {
     required this.client,
     required this.history,
     required this.onLibraryChanged,
+    this.refreshSignal,
   });
   final AutomationClient client;
   final PosterHistory history;
   final VoidCallback onLibraryChanged;
+  final Listenable? refreshSignal;
   @override
   State<PhotoFinderScreen> createState() => _PhotoFinderScreenState();
 }
 
 class _PhotoFinderScreenState extends State<PhotoFinderScreen> {
+  final _singleVin = TextEditingController();
+  final _singleNo = TextEditingController();
+  final Map<String, String> _processed = {};
+  bool _syncing = false;
+  bool _libraryRefreshPending = false;
   final _email = TextEditingController();
   final _password = TextEditingController();
   String _search = '';
@@ -101,14 +109,95 @@ class _PhotoFinderScreenState extends State<PhotoFinderScreen> {
   Map<String, dynamic> get _state => widget.client.photos;
 
   @override
+  void initState() {
+    super.initState();
+    widget.client.addListener(_queueAttachment);
+    widget.refreshSignal?.addListener(_libraryChanged);
+    _queueAttachment();
+  }
+
+  @override
+  void didUpdateWidget(covariant PhotoFinderScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.client != widget.client) {
+      oldWidget.client.removeListener(_queueAttachment);
+      widget.client.addListener(_queueAttachment);
+      _processed.clear();
+    }
+    if (oldWidget.refreshSignal != widget.refreshSignal) {
+      oldWidget.refreshSignal?.removeListener(_libraryChanged);
+      widget.refreshSignal?.addListener(_libraryChanged);
+    }
+    _queueAttachment();
+  }
+
+  void _libraryChanged() {
+    _processed.clear();
+    if (_syncing) _libraryRefreshPending = true;
+    _queueAttachment();
+  }
+
+  void _queueAttachment() {
+    scheduleMicrotask(() {
+      if (mounted && !_syncing && !_working) unawaited(_autoAttach());
+    });
+  }
+
+  Future<void> _autoAttach() async {
+    final rows = _rows(_state['vehicles'])
+        .where(
+          (row) =>
+              ['done', 'partial', 'error', 'stopped'].contains(row['status']) &&
+              (row['count'] as num? ?? 0) > 0,
+        )
+        .toList();
+    if (rows.isEmpty) return;
+    _syncing = true;
+    var updated = 0;
+    try {
+      for (final row in rows) {
+        if (!mounted) break;
+        final id = row['id'] as String;
+        final signature =
+            '${_state['output']}|${_state['startedAt']}|${row['vin']}|${row['status']}|${row['count']}';
+        if (_processed[id] == signature) continue;
+        // Record before invoking: client notifications must not start a second merge.
+        _processed[id] = signature;
+        try {
+          updated += await _attachRow(row);
+        } catch (error) {
+          if (mounted) {
+            setState(
+              () => _message =
+                  'Automatic poster attachment needs attention: $error. Use photos in posters to retry.',
+            );
+          }
+        }
+      }
+      if (mounted && updated > 0) widget.onLibraryChanged();
+    } finally {
+      _syncing = false;
+      if (mounted) setState(() {});
+      if (_libraryRefreshPending) {
+        _libraryRefreshPending = false;
+        _queueAttachment();
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    widget.client.removeListener(_queueAttachment);
+    widget.refreshSignal?.removeListener(_libraryChanged);
+    _singleVin.dispose();
+    _singleNo.dispose();
     _email.dispose();
     _password.dispose();
     super.dispose();
   }
 
   Future<void> _perform(Future<void> Function() action) async {
-    if (_working) return;
+    if (_working || _syncing) return;
     setState(() {
       _working = true;
       _message = null;
@@ -118,7 +207,10 @@ class _PhotoFinderScreenState extends State<PhotoFinderScreen> {
     } catch (error) {
       if (mounted) setState(() => _message = error.toString());
     } finally {
-      if (mounted) setState(() => _working = false);
+      if (mounted) {
+        setState(() => _working = false);
+        _queueAttachment();
+      }
     }
   }
 
@@ -160,52 +252,76 @@ class _PhotoFinderScreenState extends State<PhotoFinderScreen> {
     if (mounted) {
       setState(
         () => _message =
-            '${plan.addedCount} poster drafts added; ${plan.replacedCount} updated. Download photos, then choose Use photos in posters.',
+            '${plan.addedCount} poster drafts added; ${plan.replacedCount} updated. Downloaded photos attach automatically by VIN. Review flagged slots in History.',
       );
     }
   });
 
+  Future<int> _attachRow(Map<String, dynamic> row) async {
+    // Skip decoding when no saved poster has this VIN yet.
+    final vin = normalizedVehicleVin(row['vin'] as String);
+    if (!(await widget.history.list()).any(
+      (entry) => normalizedVehicleVin(entry.vehicle.vin) == vin,
+    )) {
+      return 0;
+    }
+    final result = await widget.client.invoke('poster-photos', {
+      'id': row['id'],
+    });
+    if (normalizedVehicleVin(result['vin'] as String? ?? '') != vin) {
+      throw StateError('Downloaded photos do not match the requested VIN.');
+    }
+    final encodedPhotos = result['photos'] as List;
+    if (encodedPhotos.length != 4) {
+      throw StateError(
+        'Update the automation helper to return Front, Interior, Side and Rear slots.',
+      );
+    }
+    final photos = List<Uint8List?>.filled(4, null);
+    for (var slot = 0; slot < 4; slot++) {
+      final encoded = encodedPhotos[slot];
+      if (encoded == null) continue;
+      final codec = await ui.instantiateImageCodec(
+        base64Decode(encoded as String),
+        targetWidth: 2600,
+        allowUpscaling: false,
+      );
+      ui.Image? image;
+      try {
+        image = (await codec.getNextFrame()).image;
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (bytes == null) {
+          throw StateError('Could not process downloaded photo.');
+        }
+        photos[slot] = bytes.buffer.asUint8List();
+      } finally {
+        image?.dispose();
+        codec.dispose();
+      }
+    }
+    return attachDownloadedPhotos(widget.history, vin, photos);
+  }
+
   Future<void> _attach() => _perform(() async {
     var count = 0;
     for (final row in _rows(_state['vehicles'])) {
-      if ((row['count'] as num? ?? 0) == 0) {
+      if ((row['count'] as num? ?? 0) == 0 ||
+          [
+            'queued',
+            'searching',
+            'downloading',
+            'classifying',
+          ].contains(row['status'])) {
         continue;
       }
-      final result = await widget.client.invoke('poster-photos', {
-        'id': row['id'],
-      });
-      final photos = <Uint8List>[];
-      for (final encoded in result['photos'] as List) {
-        final codec = await ui.instantiateImageCodec(
-          base64Decode(encoded as String),
-          targetWidth: 2600,
-          allowUpscaling: false,
-        );
-        ui.Image? image;
-        try {
-          image = (await codec.getNextFrame()).image;
-          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-          if (bytes == null) {
-            throw StateError('Could not process downloaded photo.');
-          }
-          photos.add(bytes.buffer.asUint8List());
-        } finally {
-          image?.dispose();
-          codec.dispose();
-        }
-      }
-      count += await attachDownloadedPhotos(
-        widget.history,
-        result['vin'] as String,
-        photos,
-      );
+      count += await _attachRow(row);
     }
     widget.onLibraryChanged();
     if (mounted) {
       setState(
         () => _message = count == 0
-            ? 'No empty slots updated. Import poster drafts with matching VINs first, or check whether their photo slots are already full.'
-            : 'Photos added to $count matching posters. Open History to review and generate them. Existing photo slots were kept.',
+            ? 'No empty slots updated. Check matching VINs in History. Unidentified views stay blank and flagged for manual selection.'
+            : 'Photos added to $count matching posters. Review flagged slots in History.',
       );
     }
   });
@@ -229,14 +345,15 @@ class _PhotoFinderScreenState extends State<PhotoFinderScreen> {
               'not_found',
               'skipped',
               'stopped',
-            ].contains(status)) {
+            ].contains(status) &&
+            (r['missingViews'] as List? ?? []).isEmpty) {
           return false;
         }
         return '${r['vin']} ${r['vehicle']} ${r['no']}'.toLowerCase().contains(
           _search.toLowerCase(),
         );
       });
-      final ready = !_working && !running;
+      final ready = !_working && !_syncing && !running;
       return AutomationPanel(
         client: widget.client,
         child: ListView(
@@ -248,7 +365,7 @@ class _PhotoFinderScreenState extends State<PhotoFinderScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Search Bid.Cars and NCA by exact VIN. Download galleries into numbered folders, then fill your poster drafts.',
+              'Search Bid.Cars and NCA by exact VIN. Photos attach to matching poster drafts automatically: Front, Interior, Side, Rear. Uncertain or missing views stay blank and flagged for manual selection. Photo recognition runs on this computer and downloads its AI model on first use.',
             ),
             const SizedBox(height: 24),
             StudioCard(
@@ -278,7 +395,10 @@ class _PhotoFinderScreenState extends State<PhotoFinderScreen> {
                         label: const Text('Choose photo folder'),
                       ),
                       TextButton(
-                        onPressed: ready && rows.isNotEmpty
+                        onPressed:
+                            ready &&
+                                (state['workbookPath'] as String? ?? '')
+                                    .isNotEmpty
                             ? _importDrafts
                             : null,
                         child: const Text('Import list into poster drafts'),
@@ -382,6 +502,56 @@ class _PhotoFinderScreenState extends State<PhotoFinderScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            StudioCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Find images for one vehicle',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: const ValueKey('single-vehicle-vin'),
+                    controller: _singleVin,
+                    enabled: ready,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                      labelText: 'VIN',
+                      hintText: 'Enter the full 17-character VIN',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: const ValueKey('single-vehicle-number'),
+                    controller: _singleNo,
+                    enabled: ready,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'No. (optional)',
+                      helperText:
+                          'Uses the matching list row, or assigns the next number.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    key: const ValueKey('find-single-vehicle'),
+                    onPressed:
+                        ready && (state['output'] as String? ?? '').isNotEmpty
+                        ? () => _command('search-one', {
+                            'vin': _singleVin.text,
+                            'no': _singleNo.text,
+                          })
+                        : null,
+                    icon: const Icon(Icons.search),
+                    label: const Text('Find and download this vehicle'),
+                  ),
+                  if ((state['output'] as String? ?? '').isEmpty)
+                    const Text('Choose a photo folder above to start.'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             Wrap(
               spacing: 12,
               runSpacing: 12,
@@ -434,7 +604,7 @@ class _PhotoFinderScreenState extends State<PhotoFinderScreen> {
                 ),
               ],
             ),
-            if (_working || running)
+            if (_working || _syncing || running)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
                 child: LinearProgressIndicator(),
@@ -497,7 +667,7 @@ class _PhotoFinderScreenState extends State<PhotoFinderScreen> {
             const SizedBox(height: 12),
             TextField(
               decoration: const InputDecoration(
-                labelText: 'Search VIN or vehicle',
+                labelText: 'Search VIN, No. or vehicle',
                 prefixIcon: Icon(Icons.search),
               ),
               onChanged: (value) => setState(() => _search = value),
@@ -523,15 +693,26 @@ class _PhotoFinderScreenState extends State<PhotoFinderScreen> {
             const SizedBox(height: 16),
             for (final row in visible)
               Card(
+                key: ValueKey('photo-result-${row['id']}'),
                 child: ListTile(
                   title: Text('${row['no']}. ${row['vehicle']} ${row['year']}'),
                   subtitle: SelectableText(
-                    '${row['vin']}\n${row['status']} · ${row['count']} photos\n${row['message'] ?? ''}',
+                    '${row['vin']}\n${row['status']} · ${row['count']} photos\n${row['message'] ?? ''}${(row['missingViews'] as List? ?? []).isEmpty ? '' : '\n⚑ Select manually: ${(row['missingViews'] as List).join(', ')}'}',
                   ),
                   isThreeLine: true,
                   trailing: PopupMenuButton<String>(
-                    onSelected: (action) => _command(action, {'id': row['id']}),
+                    onSelected: (action) => action == 'download-one'
+                        ? _command('start', {'mode': 'single', 'id': row['id']})
+                        : _command(action, {'id': row['id']}),
                     itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'download-one',
+                        enabled:
+                            ready &&
+                            row['status'] != 'invalid' &&
+                            (state['output'] as String? ?? '').isNotEmpty,
+                        child: const Text('Find images for this vehicle'),
+                      ),
                       PopupMenuItem(
                         value: 'open-folder',
                         enabled: (row['count'] as num? ?? 0) > 0,

@@ -253,13 +253,13 @@ void main() {
     await tester.pumpWidget(const VehiclePosterApp());
     expect(find.text('Type / trim'), findsNothing);
     expect(find.byType(TextField), findsNWidgets(6));
-    expect(find.text('Main photo'), findsOneWidget);
+    expect(find.text('1 · Front'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('Bottom-left photo'),
+      find.text('4 · Rear'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('Bottom-left photo'), findsOneWidget);
+    expect(find.text('4 · Rear'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Top-left number'),
       250,

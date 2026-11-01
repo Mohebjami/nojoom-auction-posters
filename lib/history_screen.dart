@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'auction_vehicles_screen.dart';
+import 'automation/photo_attachment.dart';
 import 'batch_posters_screen.dart';
 import 'backup_screen.dart';
 import 'duplicate_vehicle_dialog.dart';
@@ -11,6 +12,8 @@ import 'studio_ui.dart';
 import 'vehicle_draft_import.dart';
 import 'vehicle_duplicate_review.dart';
 import 'vehicle_number_sort.dart';
+
+enum _HistorySearch { all, vin, number }
 
 enum _HistorySort { numberAscending, numberDescending, newest, oldest }
 
@@ -40,6 +43,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   late Future<List<PosterHistoryEntry>> _entries;
   bool _busy = false;
   String _query = '';
+  _HistorySearch _searchBy = _HistorySearch.all;
   bool _recentOnly = false;
   bool _grid = true;
   _HistorySort _sort = _HistorySort.numberAscending;
@@ -413,6 +417,35 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
                 ),
         ),
+        if (entry.missingPhotoSlots.isNotEmpty)
+          Positioned(
+            left: compact ? 3 : 10,
+            right: compact ? 3 : 10,
+            bottom: compact ? 3 : 10,
+            child: Tooltip(
+              message:
+                  'Select manually: ${entry.missingPhotoSlots.map((slot) => posterPhotoViews[slot]).join(', ')}',
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xffffedce),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  compact
+                      ? '⚑ ${entry.missingPhotoSlots.length}'
+                      : '⚑ Missing: ${entry.missingPhotoSlots.map((slot) => posterPhotoViews[slot]).join(', ')}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xff825017),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
         if (!compact)
           Positioned(
             top: 10,
@@ -562,7 +595,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
       controller: _search,
       onChanged: (value) => setState(() => _query = value.toLowerCase().trim()),
       decoration: InputDecoration(
-        hintText: 'Search vehicles, VIN or number…',
+        hintText: switch (_searchBy) {
+          _HistorySearch.all => 'Search vehicles, VIN or No.…',
+          _HistorySearch.vin => 'Search VIN…',
+          _HistorySearch.number => 'Search No.…',
+        },
         prefixIcon: const Icon(Icons.search_rounded, size: 19),
         suffixIcon: _query.isEmpty
             ? null
@@ -583,6 +620,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
       spacing: 4,
       runSpacing: 4,
       children: [
+        DropdownButtonHideUnderline(
+          child: DropdownButton<_HistorySearch>(
+            key: const ValueKey('history-search-by'),
+            value: _searchBy,
+            items: const [
+              DropdownMenuItem(
+                value: _HistorySearch.all,
+                child: Text('Search: All'),
+              ),
+              DropdownMenuItem(
+                value: _HistorySearch.vin,
+                child: Text('Search: VIN'),
+              ),
+              DropdownMenuItem(
+                value: _HistorySearch.number,
+                child: Text('Search: No.'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _searchBy = value);
+            },
+          ),
+        ),
         DropdownButtonHideUnderline(
           child: DropdownButton<_HistorySort>(
             value: _sort,
@@ -674,7 +734,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     List<PosterHistoryEntry> entries, {
     required bool wide,
   }) {
-    final opened = _openedDateFolders.contains(key);
+    final opened = _query.isNotEmpty || _openedDateFolders.contains(key);
     final date = MaterialLocalizations.of(
       context,
     ).formatMediumDate(entries.first.updatedAt.toLocal());
@@ -851,11 +911,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
             .where((entry) => entry.updatedAt.isAfter(cutoff))
             .length;
         final filtered = entries.where((entry) {
-          final text =
-              '${entry.title} ${entry.vehicle.vin} ${entry.vehicle.number} ${entry.vehicle.color}'
-                  .toLowerCase();
-          return text.contains(_query) &&
-              (!_recentOnly || entry.updatedAt.isAfter(cutoff));
+          final text = switch (_searchBy) {
+            _HistorySearch.all =>
+              '${entry.title} ${entry.vehicle.vin} ${entry.vehicle.number} ${entry.vehicle.color}',
+            _HistorySearch.vin => entry.vehicle.vin,
+            _HistorySearch.number => entry.vehicle.number,
+          };
+          final matches = _searchBy == _HistorySearch.vin
+              ? normalizedVehicleVin(
+                  text,
+                ).contains(normalizedVehicleVin(_query))
+              : text.toLowerCase().contains(_query);
+          return matches && (!_recentOnly || entry.updatedAt.isAfter(cutoff));
         }).toList();
         filtered.sort((a, b) {
           final comparison = switch (_sort) {
@@ -1032,7 +1099,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     SliverToBoxAdapter(
                       child: _dateFolderHeading(key, folders[key]!, wide: wide),
                     ),
-                    if (_openedDateFolders.contains(key)) ...[
+                    if (_query.isNotEmpty ||
+                        _openedDateFolders.contains(key)) ...[
                       ..._dateFolderContents(folders[key]!, constraints, wide),
                     ],
                   ],

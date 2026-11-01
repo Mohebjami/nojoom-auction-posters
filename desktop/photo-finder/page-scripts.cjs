@@ -23,6 +23,7 @@ function inspectPage(vin) {
   const pathMatches = /\/(?:lot|vehicle)\//.test(location.pathname) && location.pathname.toUpperCase().endsWith(`-${vin}`);
   const verified = pathMatches && headings.some(h => h === vin || h.endsWith(` ${vin}`));
   const images = [];
+  const imageDescriptions = {};
   if (verified) {
     for (const img of document.querySelectorAll('img')) {
       const alt = img.getAttribute('alt') || '';
@@ -48,6 +49,7 @@ function inspectPage(vin) {
         if (url.protocol !== 'https:' || !['images.bid.cars', 'mercury.bid.cars', 'pluto.bid.car'].includes(url.hostname)) continue;
         if (/placeholder|no[-_]?image|logo|\.svg(?:\?|$)/i.test(url.href)) continue;
         images.push(url.href);
+        imageDescriptions[url.href] = [alt, img.getAttribute('title'), anchor?.getAttribute('data-caption'), anchor?.getAttribute('title')].filter(Boolean).join(' ');
         break;
       }
     }
@@ -56,6 +58,7 @@ function inspectPage(vin) {
     url: location.href, title, blocked, inputs, verified,
     links: [...new Map(links.map(a => [a.url, a])).values()],
     images: [...new Set(images)].slice(0, 200),
+    imageDescriptions,
     noResults: /no (?:vehicles|results|cars|records)(?: were)? found|nothing found|no matches|0 vehicles|we (?:could not|couldn't) find|no vehicles matching/i.test(text),
   };
 }

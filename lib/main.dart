@@ -85,6 +85,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       client: _automation,
       history: _history,
       onLibraryChanged: _automationLibraryChanged,
+      refreshSignal: _historyRefresh,
     );
     _ncaPage = NcaImportScreen(client: _automation);
     _editorPage = EditorScreen(
@@ -259,10 +260,10 @@ class _EditorScreenState extends State<EditorScreen> {
   PosterHistory get _history => widget.history ?? PosterHistory.instance;
 
   static const List<String> _photoLabels = [
-    'Main photo',
-    'Top-left photo',
-    'Middle-left photo',
-    'Bottom-left photo',
+    '1 · Front',
+    '2 · Interior',
+    '3 · Side',
+    '4 · Rear',
   ];
 
   @override
@@ -1060,7 +1061,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'Add photo',
+                      '⚑ Select manually',
                       style: TextStyle(
                         color: accent,
                         fontWeight: FontWeight.w600,
@@ -1194,7 +1195,7 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget _photosSection() => _section(
     '01',
     'Vehicle photos',
-    '${_photos.where((photo) => photo != null).length} of 4 added • All photos are optional',
+    '${_photos.where((photo) => photo != null).length} of 4 added • Front · Interior · Side · Rear',
     GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),

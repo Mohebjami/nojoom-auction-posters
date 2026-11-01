@@ -56,7 +56,14 @@ function parseGallery(html, vin, source) {
   const images = [...new Set([...page.element.querySelectorAll('#carouselExampleInterval a[data-fancybox="gallery"][href]')]
     .map(a => a.getAttribute('href')).filter(isNCAPhotoURL))];
   if (!images.length) throw new Error('The exact NCA VIN has no accessible gallery photos.');
-  return { source, images };
+  const imageDescriptions = {};
+  for (const anchor of page.element.querySelectorAll('#carouselExampleInterval a[data-fancybox="gallery"][href]')) {
+    const url = anchor.getAttribute('href');
+    if (!images.includes(url)) continue;
+    const img = anchor.querySelector('img');
+    imageDescriptions[url] = [imageDescriptions[url], anchor.getAttribute('data-caption'), anchor.getAttribute('title'), img?.getAttribute('alt'), img?.getAttribute('title')].filter(Boolean).join(' ');
+  }
+  return { source, images, imageDescriptions };
 }
 
 class NCABrowser {

@@ -140,6 +140,7 @@ class BidCarsBrowser {
     let best = [];
     let stable = 0;
     let page;
+    const imageDescriptions = {};
     for (let i = 0; i < 24; i++) {
       page = await this.snapshot(vin);
       if (page.blocked) { await this.help('Complete browser verification, then click Continue.'); continue; }
@@ -147,6 +148,7 @@ class BidCarsBrowser {
         await this.delay(350);
         continue;
       }
+      Object.assign(imageDescriptions, page.imageDescriptions);
       if (page.images.length > best.length) { best = page.images; stable = 0; }
       else if (best.length) stable++;
       if (stable >= 4) break;
@@ -155,7 +157,7 @@ class BidCarsBrowser {
     if (!page?.verified) throw new Error('The vehicle page did not confirm the exact VIN. No photos were saved.');
     const images = best.filter(isPhotoURL);
     if (!images.length) throw new Error('This VIN page has no accessible gallery photos. Photos may be unavailable or the website layout may have changed.');
-    return { source: page.url, images };
+    return { source: page.url, images, imageDescriptions };
   }
   async fetchPhoto(url, signal) {
     if (!isPhotoURL(url)) throw new Error('Unsupported photo host.');

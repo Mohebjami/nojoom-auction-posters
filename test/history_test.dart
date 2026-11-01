@@ -8,6 +8,7 @@ import 'package:image/image.dart' as img;
 import 'package:sembast/sembast_io.dart';
 import 'package:sembast/sembast_memory.dart';
 import 'package:vehicle_poster/main.dart';
+import 'package:vehicle_poster/history_screen.dart';
 import 'package:vehicle_poster/poster.dart';
 import 'package:vehicle_poster/poster_export.dart';
 import 'package:vehicle_poster/poster_history.dart';
@@ -188,6 +189,67 @@ Number,Vehicle,Year,Color,Price (USD),Stock / ID
       expect(red.r, greaterThan(240));
       expect(red.g, lessThan(15));
       expect(red.b, lessThan(15));
+    },
+  );
+
+  testWidgets(
+    'history VIN and No. searches reveal matches inside closed folders',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final db = (await tester.runAsync(
+        () => databaseFactoryMemory.openDatabase('history-search'),
+      ))!;
+      addTearDown(db.close);
+      final history = PosterHistory(openDatabase: () async => db);
+      await tester.runAsync(() async {
+        await history.save(
+          const VehicleDetails(
+            number: '25',
+            title: 'Matching car',
+            vin: 'JTDKN3DU0B1457686',
+          ),
+          [null, null, null, null],
+        );
+        await history.save(
+          const VehicleDetails(
+            number: '3',
+            title: 'Another car',
+            vin: 'JTDKN3DU2A0090987',
+          ),
+          [null, null, null, null],
+        );
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: HistoryScreen(history: history, embedded: true)),
+        ),
+      );
+      await settleStorage(tester);
+      expect(find.text('Matching car'), findsNothing);
+      await tester.enterText(find.byType(TextField), 'jtdkn3du0b1457686');
+      await settleStorage(tester);
+      expect(find.text('Matching car'), findsOneWidget);
+      expect(find.text('Another car'), findsNothing);
+      expect(
+        find.textContaining('Missing: Front, Interior, Side, Rear'),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('history-search-by')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Search: No.').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '25');
+      await settleStorage(tester);
+      expect(find.text('Matching car'), findsOneWidget);
+      expect(find.text('Another car'), findsNothing);
+      await tester.enterText(find.byType(TextField), '1457686');
+      await settleStorage(tester);
+      expect(find.text('Matching car'), findsNothing);
+      expect(find.text('No matching posters'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     },
   );
 

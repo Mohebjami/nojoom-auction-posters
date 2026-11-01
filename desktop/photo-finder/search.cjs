@@ -21,7 +21,11 @@ function parseSearch(payload, vin, archived) {
     const source = new URL(`https://bid.cars/en/lot/${lot}/${encodeURIComponent(tag)}`);
     if (archived) source.searchParams.set('archived', 'true');
     const images = [...new Set(Object.values(record.img_large || {}).filter(value => typeof value === 'string' && isPhotoURL(value)))].slice(0, 200);
-    return { source: source.href, images };
+    const imageDescriptions = {};
+    for (const [key, url] of Object.entries(record.img_large || {})) {
+      if (images.includes(url)) imageDescriptions[url] = key;
+    }
+    return { source: source.href, images, imageDescriptions };
   }
   if (exact.length) throw new Error('Bid.Cars returned the VIN without a valid vehicle listing URL.');
   return null;

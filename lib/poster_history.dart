@@ -49,6 +49,7 @@ class PosterHistoryEntry {
 
   /// Import date (or original save date), unaffected by later label edits.
   final DateTime labelDate;
+  final List<int> missingPhotoSlots;
 
   const PosterHistoryEntry(
     this.id,
@@ -56,6 +57,7 @@ class PosterHistoryEntry {
     this.updatedAt, {
     this.section = PosterSections.oldVehicles,
     DateTime? labelDate,
+    this.missingPhotoSlots = const [],
   }) : labelDate = labelDate ?? updatedAt;
 
   String get title {
@@ -133,28 +135,77 @@ class PosterHistory {
   }
 
   Future<List<PosterHistoryEntry>> list() async {
-    final records = await _entries.find(
-      await _db,
-      finder: Finder(sortOrders: [SortOrder('updatedAt', false)]),
-    );
-    return records
-        .map(
-          (record) => PosterHistoryEntry(
-            record.key,
-            VehicleDetails.fromJson(
-              Map<String, Object?>.from(record.value['vehicle'] as Map),
+    final db = await _db;
+    return db.transaction((txn) async {
+      final records = await _entries.find(
+        txn,
+        finder: Finder(sortOrders: [SortOrder('updatedAt', false)]),
+      );
+      final photoRecords = {
+        for (final record in await _photos.find(txn)) record.key: record.value,
+      };
+      return records
+          .map(
+            (record) => PosterHistoryEntry(
+              record.key,
+              VehicleDetails.fromJson(
+                Map<String, Object?>.from(record.value['vehicle'] as Map),
+              ),
+              DateTime.parse(record.value['updatedAt'] as String),
+              section: PosterSections.normalize(record.value['section']),
+              missingPhotoSlots: [
+                for (var slot = 0; slot < 4; slot++)
+                  if ((photoRecords[record.key]?['slots'] as List?)?[slot] ==
+                      null)
+                    slot,
+              ],
+              labelDate: DateTime.parse(
+                (record.value['labelDate'] ??
+                        record.value['createdAt'] ??
+                        record.value['updatedAt'])
+                    as String,
+              ),
             ),
-            DateTime.parse(record.value['updatedAt'] as String),
-            section: PosterSections.normalize(record.value['section']),
-            labelDate: DateTime.parse(
-              (record.value['labelDate'] ??
-                      record.value['createdAt'] ??
-                      record.value['updatedAt'])
-                  as String,
-            ),
-          ),
-        )
+          )
+          .toList();
+    });
+  }
+
+  /// Merge matching VINs and empty semantic slots atomically without saving
+  /// stale vehicle details or moving posters into another history date folder.
+  Future<int> attachPhotosByVin(String vin, List<Uint8List?> photos) async {
+    if (photos.length != 4) {
+      throw ArgumentError('Provide Front, Interior, Side and Rear slots.');
+    }
+    String normalize(String value) =>
+        value.replaceAll(RegExp(r'\s'), '').toUpperCase();
+    final identity = normalize(vin);
+    if (identity.isEmpty || photos.every((photo) => photo == null)) return 0;
+    final encoded = photos
+        .map((photo) => photo == null ? null : base64Encode(photo))
         .toList();
+    final db = await _db;
+    return db.transaction((txn) async {
+      var updated = 0;
+      for (final record in await _entries.find(txn)) {
+        final vehicle = record.value['vehicle'] as Map;
+        if (normalize(vehicle['vin'] as String? ?? '') != identity) continue;
+        final saved = await _photos.record(record.key).get(txn);
+        if (saved == null) continue;
+        final slots = List<String?>.from(saved['slots'] as List);
+        var changed = false;
+        for (var slot = 0; slot < 4; slot++) {
+          if (slots[slot] == null && encoded[slot] != null) {
+            slots[slot] = encoded[slot];
+            changed = true;
+          }
+        }
+        if (!changed) continue;
+        await _photos.record(record.key).put(txn, {'slots': slots});
+        updated++;
+      }
+      return updated;
+    });
   }
 
   Future<PosterDraft> load(int id) async {

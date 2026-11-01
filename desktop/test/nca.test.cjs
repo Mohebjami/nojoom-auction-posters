@@ -48,7 +48,7 @@ test('NCA accepts only links within the confirmed VIN search component', () => {
   assert.throws(() => parseSearch(component('pages.dashboard.dashboard', { searchTerm: VIN, defaultSearch: false, searchResult: '<i></i> 1 Result' }, ''), VIN), /unrecognized result list/);
 });
 test('NCA verifies the full detail-table VIN and uses only primary carousel photos', () => {
-  assert.deepEqual(parseGallery(gallery(), VIN, SOURCE), { source: SOURCE, images: [PHOTO] });
+  assert.deepEqual(parseGallery(gallery(), VIN, SOURCE), { source: SOURCE, images: [PHOTO], imageDescriptions: { [PHOTO]: '' } });
   assert.equal(parseGallery(gallery(OTHER), VIN, SOURCE), null);
   assert.equal(parseGallery(gallery('JTEZU17R868*'), VIN, SOURCE), null);
   assert.throws(() => parseGallery(gallery(), VIN, 'https://evil.example/vehicle/1'), /Unsupported/);
