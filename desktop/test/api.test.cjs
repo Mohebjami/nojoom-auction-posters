@@ -1,0 +1,20 @@
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const {createAPI}=require('../api.cjs');
+test('local API requires the secret, rejects browser origins, and dispatches only supported routes',async t=>{
+  const calls=[];
+  const server=await createAPI({token:'test-secret',getState:()=>({photos:{vehicles:[]},importer:{}}),command:async(...args)=>{calls.push(args);return {ok:true};},posterPhotos:async id=>({vin:id,photos:['bytes']})});
+  t.after(()=>server.close());
+  const base=`http://127.0.0.1:${server.address().port}`;
+  const headers={Authorization:'Bearer test-secret','Content-Type':'application/json'};
+  assert.equal((await fetch(`${base}/state`)).status,403);
+  assert.equal((await fetch(`${base}/state`,{headers:{...headers,Origin:'http://evil.example'}})).status,403);
+  assert.equal((await fetch(`${base}/unknown`,{headers})).status,404);
+  assert.deepEqual(await (await fetch(`${base}/state`,{headers})).json(),{photos:{vehicles:[]},importer:{}});
+  await fetch(`${base}/command`,{method:'POST',headers,body:JSON.stringify({action:'photos.stop',args:{}})});
+  assert.deepEqual(calls,[['photos.stop',{}]]);
+  const photos=await fetch(`${base}/command`,{method:'POST',headers,body:JSON.stringify({action:'poster-photos',args:{id:'VIN'}})});
+  assert.deepEqual(await photos.json(),{vin:'VIN',photos:['bytes']});
+  assert.equal((await fetch(`${base}/command`,{method:'POST',headers,body:'not json'})).status,400);
+  assert.equal((await fetch(`${base}/command`,{method:'POST',headers,body:'x'.repeat(17000)})).status,413);
+});

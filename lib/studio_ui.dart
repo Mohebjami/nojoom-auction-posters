@@ -94,6 +94,8 @@ class StudioShell extends StatelessWidget {
     this.onHistory,
     this.onAuctionVehicles,
     this.onVehiclesLabel,
+    this.onPhotoFinder,
+    this.onNcaImport,
     this.onNew,
     this.busy = false,
   });
@@ -105,6 +107,8 @@ class StudioShell extends StatelessWidget {
   final VoidCallback? onHistory;
   final VoidCallback? onAuctionVehicles;
   final VoidCallback? onVehiclesLabel;
+  final VoidCallback? onPhotoFinder;
+  final VoidCallback? onNcaImport;
   final VoidCallback? onNew;
   final bool busy;
 
@@ -179,6 +183,10 @@ class StudioShell extends StatelessWidget {
       ('Auction List', Icons.gavel_outlined, onAuctionVehicles),
     if (onVehiclesLabel != null || section == 'Vehicles Label')
       ('Vehicles Label', Icons.sell_outlined, onVehiclesLabel),
+    if (onPhotoFinder != null || section == 'Photo Finder')
+      ('Photo Finder', Icons.photo_library_outlined, onPhotoFinder),
+    if (onNcaImport != null || section == 'NCA Import')
+      ('NCA Import', Icons.cloud_upload_outlined, onNcaImport),
     if (onHistory != null || section == 'History')
       ('History', Icons.history_rounded, onHistory),
   ];
@@ -232,6 +240,8 @@ class StudioShell extends StatelessWidget {
                             switch (destination.$1) {
                               'Auction List' => 'Vehicles',
                               'Vehicles Label' => 'Labels',
+                              'Photo Finder' => 'Photos',
+                              'NCA Import' => 'NCA',
                               _ => destination.$1,
                             },
                             maxLines: 1,
@@ -346,15 +356,32 @@ class StudioShell extends StatelessWidget {
                               ),
                             ),
                           ),
-                          for (final destination in _destinations)
-                            _nav(
-                              destination.$1,
-                              destination.$2,
-                              destination.$3,
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final items = [
+                                  for (final destination in _destinations)
+                                    _nav(
+                                      destination.$1,
+                                      destination.$2,
+                                      destination.$3,
+                                    ),
+                                  if (section == 'Preview')
+                                    _nav('Preview', Icons.image_outlined, null),
+                                ];
+                                final navigation = Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: items,
+                                );
+                                return constraints.maxHeight < items.length * 66
+                                    ? SingleChildScrollView(child: navigation)
+                                    : Align(
+                                        alignment: Alignment.topCenter,
+                                        child: navigation,
+                                      );
+                              },
                             ),
-                          if (section == 'Preview')
-                            _nav('Preview', Icons.image_outlined, null),
-                          const Spacer(),
+                          ),
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(16),
@@ -547,7 +574,7 @@ class StudioCard extends StatelessWidget {
         ),
       ],
     ),
-    child: child,
+    child: Material(type: MaterialType.transparency, child: child),
   );
 }
 

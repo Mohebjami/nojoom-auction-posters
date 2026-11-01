@@ -1,0 +1,28 @@
+{
+  "name": "nojoom-automation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "main.cjs",
+  "description": "Bundled automation engine for Nojoom Auction Posters",
+  "scripts": {
+    "test": "node --test test/*.test.cjs test/*.test.js",
+    "check": "node --check main.cjs && node --check api.cjs && node --check photo-service.cjs && node --check importer-service.js",
+    "package:mac": "node scripts/package-mac.cjs"
+  },
+  "dependencies": {
+    "linkedom": "0.18.12",
+    "read-excel-file": "9.3.12",
+    "exceljs": "^4.4.0",
+    "playwright": "^1.56.0"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "45.0.0"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
+  }
+}

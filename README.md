@@ -1,6 +1,80 @@
-# Vehicle Poster
+# Nojoom Auction Posters
 
 A Flutter app for creating polished vehicle sale posters from up to four photos and a small set of vehicle details. Posters can be previewed, saved as JPG, exported as PNG or SVG, shared, and reopened from local history.
+
+## Combined Mac app
+
+The Mac app now includes all three projects in one workspace:
+
+- **Create, Auction List, Vehicles Label, History**: the existing poster tools,
+  templates, spreadsheet imports, backups, printing and batch exports.
+- **Photo Finder**: Excel import, Bid.Cars and NCA sources, NCA sign-in,
+  numbered VIN folders, resume, retry, stop, manual verification, source links,
+  CSV reports and not-found VIN exports.
+- **NCA Import**: Excel/CSV validation, worksheet and item-number options,
+  form preview, explicit live publishing, verification, durable checkpoints,
+  stop, screenshots and reports. Google Chrome must be installed.
+
+Open **[Start Nojoom Auction Posters.command](Start%20Nojoom%20Auction%20Posters.command)**
+from Finder. The first launch builds the combined app if needed. After building,
+open `build/nojoom/Nojoom Auction Posters.app` directly. The installed copy on
+this Mac is `/Applications/vehicle_poster.app` and displays **Nojoom Auction
+Posters**. The built app contains
+its own automation runtime and does not need Node.js, Flutter, or either sibling
+project to run. Building requires Flutter, Node.js, npm, and Xcode.
+
+For the complete photo-to-poster workflow:
+
+1. In **Photo Finder**, choose the Excel workbook and photo destination.
+2. Choose **Import list into poster drafts**; review any duplicate VINs.
+3. Choose the photo source, sign in to NCA if needed, then **Download photos**.
+4. Choose **Use photos in posters**. Up to four verified images are normalized
+   and added to empty photo slots on saved posters with the exact matching VIN.
+   Existing photos, templates, vehicle fields and original dates are retained.
+5. Open **History** to review and generate posters.
+6. In **NCA Import**, choose **Use Photo Finder workbook** (or a different
+   Excel/CSV file), validate the prices, enter the auction URL and credentials,
+   then preview the forms. **Publish to NCA** shows the auction and vehicle
+   count for confirmation before changing the live site. Re-enter your password
+   for each run; passwords are not saved.
+
+Automation runs locally in a bundled Electron helper started by the Flutter
+app. Its API listens only on the loopback interface, requires a fresh random
+secret each launch, and rejects browser-origin requests. Browser verification
+and review windows open when needed. The helper exits when its app connection
+closes. Photo settings and browser sessions are stored under the app support
+folder's `automation/` directory; NCA import reports and checkpoints are in
+`automation/reports/`. **Open reports** reveals the current run.
+
+The Mac app runs outside App Sandbox to launch its bundled helper and Chrome.
+It retains the existing bundle identifier and reuses the earlier sandboxed
+poster database if no database exists at the new support path. No history file
+is moved or deleted. Close the older app before opening this build. The original
+photo finder and Excel importer projects remain unchanged; their runtime
+sessions and reports stay in those projects. Keep any old uncertain NCA publish
+checkpoints for review before using a different runtime to publish. The local
+installer copies earlier `state.json` checkpoints into the combined app's
+runtime without overwriting existing state, and retains the previous installed
+app under `build/previous-installed/`. It never bundles runtime data.
+
+Automation tabs require the combined Mac app. The web and mobile builds retain
+the existing poster features and show a desktop availability message for these
+two tabs.
+
+To build or rebuild the complete Mac app:
+
+```sh
+cd desktop
+npm ci
+cd ..
+./desktop/scripts/build-mac.sh
+```
+
+For development, install the desktop dependencies and use `flutter run -d macos`
+from this project root. A plain `flutter build macos` does not bundle the helper;
+use the build script for distribution. The combined app is ad-hoc signed for
+local use; distribution to other Macs requires your normal signing and
+notarization process.
 
 ## Features
 
@@ -101,9 +175,17 @@ JPG export produces a real JPEG at quality 95, preserves the 1621 × 1987 poster
 flutter analyze
 flutter test
 flutter build bundle --debug
+cd desktop
+npm run check
+PW_TEST_CHANNEL=chrome npm test
 ```
 
 The test suite covers optional inputs, vector text, embedded images, photo cropping, transparent corners, logo rendering, responsive layouts, JPEG encoding, persistent history, reopening and editing, and storage errors. Widget tests write visual QA artifacts to `build/verification`.
+
+Automation tests include an actual Chrome run against a local fixture website;
+they do not publish to NCA. Packaged-helper smoke checks exercise startup,
+authenticated API access, and shutdown. Live photo sources and NCA publishing
+still require a user-run preview and review with a real workbook.
 
 Figma import and physical-device gallery or share sheets require manual verification.
 

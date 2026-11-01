@@ -26,6 +26,8 @@ import 'batch_posters_screen.dart';
 import 'duplicate_vehicle_dialog.dart';
 import 'vehicle_draft_import.dart';
 import 'vehicle_number_sort.dart';
+import 'automation/automation_client.dart';
+import 'automation/automation_screens.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,7 +40,7 @@ class VehiclePosterApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Vehicle Poster',
+      title: 'Nojoom Auction Posters',
       debugShowCheckedModeBanner: false,
       theme: studioTheme(),
       home: const WorkspaceScreen(),
@@ -46,12 +48,13 @@ class VehiclePosterApp extends StatelessWidget {
   }
 }
 
-enum _WorkspaceTab { create, auction, labels, history }
+enum _WorkspaceTab { create, auction, labels, history, photos, nca }
 
 class WorkspaceScreen extends StatefulWidget {
   final PosterHistory? history;
+  final AutomationClient? automation;
 
-  const WorkspaceScreen({super.key, this.history});
+  const WorkspaceScreen({super.key, this.history, this.automation});
 
   @override
   State<WorkspaceScreen> createState() => _WorkspaceScreenState();
@@ -65,6 +68,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   late Widget _auctionPage;
   late Widget _labelsPage;
   late final Widget _historyPage;
+  late final AutomationClient _automation;
+  late final Widget _photoPage;
+  late final Widget _ncaPage;
+  bool _visitedAutomation = false;
   var _active = _WorkspaceTab.create;
   var _visitedAuction = false;
   var _visitedHistory = false;
@@ -73,6 +80,13 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   void initState() {
     super.initState();
     _history = widget.history ?? PosterHistory.instance;
+    _automation = widget.automation ?? AutomationClient.create();
+    _photoPage = PhotoFinderScreen(
+      client: _automation,
+      history: _history,
+      onLibraryChanged: _automationLibraryChanged,
+    );
+    _ncaPage = NcaImportScreen(client: _automation);
     _editorPage = EditorScreen(
       key: _editorKey,
       history: _history,
@@ -95,6 +109,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   @override
   void dispose() {
     _historyRefresh.dispose();
+    if (widget.automation == null) _automation.dispose();
     super.dispose();
   }
 
@@ -103,10 +118,16 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _WorkspaceTab.auction => 'Auction List',
     _WorkspaceTab.labels => 'Vehicles Label',
     _WorkspaceTab.history => 'History',
+    _WorkspaceTab.photos => 'Photo Finder',
+    _WorkspaceTab.nca => 'NCA Import',
   };
 
   void _showTab(_WorkspaceTab tab) {
     if (!mounted) return;
+    if (tab == _WorkspaceTab.photos || tab == _WorkspaceTab.nca) {
+      _visitedAutomation = true;
+      _automation.start();
+    }
     if (tab == _WorkspaceTab.auction) _visitedAuction = true;
     if (tab == _WorkspaceTab.labels) _visitedAuction = true;
     if (tab == _WorkspaceTab.history) _visitedHistory = true;
@@ -143,6 +164,21 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     if (mounted) _showTab(_WorkspaceTab.create);
   }
 
+  void _automationLibraryChanged() {
+    _historyRefresh.value++;
+    final editor = _editorKey.currentState;
+    if (editor != null && !editor._dirty && editor._draftId != null) {
+      _history
+          .load(editor._draftId!)
+          .then((draft) {
+            if (mounted && !editor._dirty) editor._loadDraft(draft);
+          })
+          .catchError((Object error) {
+            if (mounted) editor._showError(error);
+          });
+    }
+  }
+
   void _backupImported() {
     if (!mounted) return;
     setState(() {
@@ -162,6 +198,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     onAuctionVehicles: () => _selectTab(_WorkspaceTab.auction),
     onVehiclesLabel: () => _selectTab(_WorkspaceTab.labels),
     onHistory: () => _selectTab(_WorkspaceTab.history),
+    onPhotoFinder: () => _selectTab(_WorkspaceTab.photos),
+    onNcaImport: () => _selectTab(_WorkspaceTab.nca),
     onNew: _active == _WorkspaceTab.create
         ? () => _editorKey.currentState?._newPoster()
         : null,
@@ -172,6 +210,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         _visitedAuction ? _auctionPage : const SizedBox.expand(),
         _visitedAuction ? _labelsPage : const SizedBox.expand(),
         _visitedHistory ? _historyPage : const SizedBox.expand(),
+        _visitedAutomation ? _photoPage : const SizedBox.expand(),
+        _visitedAutomation ? _ncaPage : const SizedBox.expand(),
       ],
     ),
   );
@@ -1670,7 +1710,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
       ShareParams(
         files: [file],
         fileNameOverrides: [name],
-        title: 'Vehicle Poster',
+        title: 'Nojoom Auction Posters',
         subject: 'Vehicle Poster',
         sharePositionOrigin: origin ?? const Rect.fromLTWH(0, 0, 1, 1),
       ),

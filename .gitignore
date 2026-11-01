@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Bundled desktop automation
+/desktop/node_modules/
+/desktop/release/
+/desktop/.runtime/
+/desktop/reports/
